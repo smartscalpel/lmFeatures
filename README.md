@@ -1,0 +1,3 @@
+# lmFeatures
+
+Detection of the brain tumor margins is one of the most significant problems in neurosurgery. Several mass-spectrometry-based approaches have been proposed recently for tumor boundary detection. One of them, spray-from-tissue does not require sample preparation but needs special algorithms for analysis of its spectra. Here we proposed the feature selection algorithm designed for analysis spray-from-tissue data.

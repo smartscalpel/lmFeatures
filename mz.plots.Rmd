@@ -1,0 +1,324 @@
+---
+title: "pdt plot"
+author: "Анатолий Сорокин"
+date: '`r format(Sys.time(), "%d.%m.%Y")`'
+output:
+  pdf_document:
+    keep_tex: yes
+    number_sections: yes
+    include:
+      in_header: myStyle.sty
+  html_document:
+    keep_md: yes
+params:
+  version: !r system("git describe --long --dirty --abbrev=10  --tags  --always", intern=TRUE)
+---
+```{r loadPackages, include=FALSE, cache=FALSE}
+## load additional packages in this chunk
+library(pander)
+library(knitr)
+library(ggplot2)
+library(gplots)
+library(xtable)
+library(data.table)
+library(plyr)
+library(stringr)
+library(dynamicTreeCut)
+library(RColorBrewer)
+
+```
+```{r setup, include=FALSE, cache=FALSE}
+## This chunk should contain global configuration commands.
+## Use this to set knitr options and related things. Everything
+## in this chunk will be included in an appendix to document the
+## configuration used.
+#output <- opts_knit$get("rmarkdown.pandoc.to")
+
+## By default R code is only included in HTML versions of the report
+## (where it can be collapsed). You can generate a PDF version
+## using rmarkdown::pdf_document to get a copy for print. Extensive
+## chunks of R code may or may not be desired in /hat setting. If you
+## want them simply change the following arguments to `echo = TRUE`.
+## In either case the default can be overwritten for individual chunks.
+#opts_chunk$set(echo = output=="html")
+#opts_chunk$set(warning = output=="html")
+#opts_chunk$set(message = output=="html")
+
+## Cache options
+opts_chunk$set(cache=TRUE)
+
+## Figure options
+## Set default figure format
+#options(reportmd.figure.format=params$format)
+
+## Set 'hide.fig.code' to FALSE to include code chunks that
+## produce Figures in the output. Note that this affects all chunks
+## that provide a figure caption.
+opts_chunk$set(hold=TRUE, hide.fig.code=FALSE)
+
+## Set up default plotting options for different formats.
+## These can be overwritten for individual chunks
+#interactiveFig()
+#screenFig()
+#printFig()
+
+## Pander options
+panderOptions("digits", 3)
+panderOptions("table.split.table", 160)
+
+## Configure Figure and Table lables
+#options(figcap.prefix = "Figure", figcap.sep = ":", figcap.prefix.highlight = "**")
+#options(tabcap.prefix = "Table", tabcap.sep = ":", tabcap.prefix.highlight = "**")
+
+## Install required knitr hooks
+#installHooks()
+old.o <- options(warn = -1)
+```
+
+```{r functions, include=FALSE,child='functions.Rmd'}
+```
+
+```{r load}
+load('./pdt.RData')
+.ppm<-50
+pdt$clIon1<-NA
+pdt$clIon2<-NA
+pdt$lm<-NA
+
+system.time(for(i in 1:75000){pdt<-alignPeaksDTrle(pdt,ppm.=.ppm)})
+.epsilon=5e-3
+.pal <- brewer.pal(12,'Paired')
+scanLen<-max(pdt$scan)
+```
+```{r calc.pdts}
+pdts<-pdt[!is.na(ion)&time<900,
+          .(N=length(mz),
+            maxI=max(intensity),
+            medI=median(intensity),
+            maxRL=max(get_runLen(scan,scanLen)),
+            medM=median(mz),
+            iqrM=IQR(mz),
+            ppm=1e6*diff(range(mz))/median(mz)),
+          by=ion]
+```
+```{r calc.pdts.cl1}
+pdts.cl1<-pdt[!is.na(clIon1),
+          .(N=length(mz),
+            maxI=max(intensity),
+            medI=median(intensity),
+            maxRL=max(get_runLen(scan,scanLen)),
+            medM=median(mz),
+            iqrM=IQR(mz),
+            ppm=1e6*diff(range(mz))/median(mz)),
+          by=clIon1]
+```
+```{r calc.pdts.cl2}
+pdts.cl2<-pdt[!is.na(clIon2),
+          .(N=length(mz),
+            maxI=max(intensity),
+            medI=median(intensity),
+            maxRL=max(get_runLen(scan,scanLen)),
+            medM=median(mz),
+            iqrM=IQR(mz),
+            ppm=1e6*diff(range(mz))/median(mz)),
+          by=clIon2]
+```
+
+```{r interm.save}
+save.image(file = 'interim.RData')
+```
+
+
+# Анализ TIC
+```{r load.tic}
+load('./tic.RData')
+if(is.null(pdt$scan)){
+  pdt$scan<-match(pdt$time,stime)
+}
+pdt$relTIC<-1e6*pdt$intensity/tic[pdt$scan]
+corData<-pdt[ion%in%pdts[N>10]$ion,
+             .(
+               corTIC=cor(tic[scan],intensity),
+               corRel=cor(tic[scan],relTIC))
+             ,by=ion]
+pdts$corTIC<-NA
+pdts$corRel<-NA
+pdt$corTIC<-NA
+pdt$corRel<-NA
+pdts$corTIC[match(corData$ion,pdts$ion)]<-corData$corTIC
+pdts$corRel[match(corData$ion,pdts$ion)]<-corData$corRel
+match(pdt$ion,corData$ion)->midx
+naidx<-which(!is.na(midx))
+pdt$corTIC[naidx]<-pdts$corTIC[midx[naidx]]
+pdt$corRel[naidx]<-pdts$corRel[midx[naidx]]
+```
+
+```{r interm.save1}
+save.image(file = 'interim.RData')
+```
+# Isotopes
+```
+{r add.isotopes}
+pdt$M1<-NA
+pdt$M2<-NA
+pdt$M3<-NA
+
+for(s in 1:max(pdt$scan)){
+  idxS<-which(pdt$scan==s)
+  ord<-order(pdt$intensity[idxS],decreasing = TRUE)
+  isidx<-match(round(pdt$mz[idxS]-1.03,2),round(pdt$mz[idxS],2)[ord])
+  idx<-which(!is.na(isidx))
+  idxO<-ord[isidx[!is.na(isidx)]]
+  pdt$M1[idxS[idx]]<-idxS[idxO]
+  isidx<-match(round(pdt$mz[idxS]-2*1.03,2),round(pdt$mz[idxS],2)[ord])
+  idx<-which(!is.na(isidx))
+  idxO<-ord[isidx[!is.na(isidx)]]
+  pdt$M2[idxS[idx]]<-idxS[idxO]
+  isidx<-match(round(pdt$mz[idxS]-3*1.03,2),round(pdt$mz[idxS],2)[ord])
+  idx<-which(!is.na(isidx))
+  idxO<-ord[isidx[!is.na(isidx)]]
+  pdt$M3[idxS[idx]]<-idxS[idxO]
+}
+```
+
+# Table
+```{r table,results='asis',cache=FALSE}
+print_table(as.data.frame(pdts),digits=c(5,5,5,-2,-2,4,5,-2,3,3,3))
+```
+
+```{r table.cl1,results='asis',cache=FALSE}
+print_table(as.data.frame(pdts.cl1),digits=c(5,5,5,-2,-2,4,5,-2,3))
+```
+
+```{r table.cl2,results='asis',cache=FALSE}
+print_table(as.data.frame(pdts.cl2),digits=c(5,5,5,-2,-2,4,5,-2,3))
+```
+
+```{r tableRL,results='asis',cache=FALSE}
+rlTable<-ddply(.data = pdt[is.finite(pdt$ion),],
+      .variables = .(ion),
+      .fun = rlTableFun)
+
+print_table(rlTable[,which(colSums(rlTable)>0)],digits=4)
+```
+
+```{r tableRL.ion1,results='asis',cache=FALSE}
+rlTable<-ddply(.data = pdt[is.finite(pdt$clIon1),],
+      .variables = .(clIon1),
+      .fun = rlTableFun)
+
+print_table(rlTable[,which(colSums(rlTable)>0)],digits=4)
+```
+
+```{r tableRL.ion2,results='asis',cache=FALSE}
+rlTable<-ddply(.data = pdt[is.finite(pdt$clIon2),],
+      .variables = .(clIon2),
+      .fun = rlTableFun)
+
+print_table(rlTable[,which(colSums(rlTable)>0)],digits=4)
+```
+
+
+
+# Correlation plots
+```{r cor.plots,fig.width=8.5,fig.height=8.5,results='asis',cache=FALSE}
+library(RColorBrewer)
+rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+r <- rf(32)
+
+p1<-qplot(corTIC,data = pdts,bins=50)
+p2<-qplot(corTIC,data = pdts,log = 'y',bins=50)
+p3<-qplot(corRel,data = pdts,bins=50)
+p4<-qplot(corRel,data = pdts,log = 'y',bins=50)
+print(multiplot(p1, p2, p3,p4, cols=2))
+qplot(maxI,corTIC,data = pdts,log='x')
+qplot(N,corTIC,data = pdts)
+qplot(medM,corTIC,data = pdts[N>100])
+qplot(maxRL,data = pdts)
+qplot(maxRL,corTIC,data = pdts)
+qplot(maxRL,maxI,data = pdts,log='y')
+p<-ggplot(pdts,aes(maxRL,maxI))
+p+ stat_bin2d(bins=25)+ 
+  scale_y_log10() + 
+  scale_fill_gradientn(colours=r, trans="log")
+
+```
+
+# MZ plots
+```{r plots,fig.width=8.5,fig.height=8.5,results='asis',cache=FALSE}
+idx<-order(pdts$ion,decreasing = FALSE)[-1]
+ions<-pdts$ion[idx]
+for(mzM in ions){
+  cat(paste("\n\\section{MZ=",mzM,", H=",sprintf('%-5.3e',pdts$maxI[pdts$ion==mzM]),"}\n\n",sep=""))
+  .epsilon<-.ppm*mzM*1e-6
+  idx<-which(abs(pdt$mz-mzM)<.epsilon)
+  if(length(idx)>100){
+    lm(mz~time,data=pdt[idx,])->l
+    # dissim1 = dist(pdt$mz[idx]);
+    #dissim2 = dist(cbind(pdt$mz[idx],l$residuals));
+    # dendro1<-hclust(d = dissim1,method = 'ward.D2')
+    #dendro2<-hclust(d = dissim2,method = 'ward.D2')
+    # ct1<-cutreeDynamic(dendro1, cutHeight = NULL,
+    #                    minClusterSize = 3,
+    #                    method = "hybrid", deepSplit = 3,
+    #                    pamStage = TRUE,  distM = as.matrix(dissim1), 
+    #                    maxPamDist = 0,verbose = 0)
+    # if(length(unique(ct1))>12){
+    #   cct1<-as.integer(names(sort(table(ct1),decreasing = TRUE))[1:12])
+    # }else{
+    #   cct1<-unique(ct1)
+    # }
+    ct2 <- cutTreeHybrid(pdt[idx,])
+    # ct2<-cutreeDynamic(dendro2, cutHeight = NULL,
+    #                    minClusterSize = 3,
+    #                    method = "hybrid", deepSplit = 3,
+    #                    pamStage = TRUE,  distM = as.matrix(dissim2), 
+    #                    maxPamDist = 0,verbose = 0)
+    if(length(unique(ct2))>12){
+      cti<-as.integer(names(sort(table(ct2),decreasing = TRUE))[1:11])
+      cct2<-rep(1,length(ct2))
+      for(ci in 1:11){
+        cct2[which(ct2==cti[ci])]<-ci+1
+      }
+    }else{
+      cct2<-ct2+1
+    }
+    p1<-qplot(time,intensity,data = pdt[idx],main=paste0('mz',mzM),color=.pal[cct2])
+    p2<-qplot(time,mz,data = pdt[idx],color=.pal[cct2])
+    p3<-qplot(mz,intensity,data = pdt[idx],color=.pal[cct2])
+    p4<-qplot(mz,ion,data=pdt[idx],color=.pal[cct2])
+    print(multiplot(p1, p2, p3,p4, cols=1))
+    p1<-qplot(time,intensity,data = pdt[idx],color=.pal[cct2])
+    p5<-qplot(mz,relTIC,data = pdt[idx],color=.pal[cct2])
+    p6<-qplot(time,relTIC,data = pdt[idx],color=.pal[cct2])
+    print(multiplot(p1, p6, p2, p3,p5,p4, cols=2))
+    if(all(!is.na(l$coefficients))&length(idx)>3){
+      op<-par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+      plot(l)
+      par(op)
+    }
+  }
+}
+```
+
+# Приложения {.tabset}
+## Функции
+```{r functions, eval=FALSE, include=TRUE}
+```
+
+
+## Конфигурация R
+```{r setup, eval=FALSE}
+```
+
+## Версии
+### Версия документа
+```{r docVersion, echo=FALSE, results='asis', cache=FALSE}
+cat(params$version)
+```
+
+### Session Info
+```{r sessionInfo, echo=FALSE, results='asis', class='text', warning=FALSE}
+pander(devtools::session_info())
+options(old.o)
+```

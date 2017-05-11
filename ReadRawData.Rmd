@@ -1,0 +1,627 @@
+---
+title: "ReadRawData"
+author: "Anatoly Sorokin"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    keep_tex: yes
+    number_sections: yes
+  html_document: default
+header-includes:
+- \usepackage[T2A]{fontenc}
+- \usepackage[utf8]{inputenc}
+- \usepackage[english,russian]{babel}
+- \usepackage{grffile}
+- \usepackage{rotating}
+- \usepackage{caption}
+- \usepackage{longtable}
+- \usepackage{lscape}
+---
+```{r libraries, echo=FALSE,message=FALSE}
+library('Matrix')
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(xtable)
+library(xcms)
+library("FactoMineR")
+library(cluster)
+library(dendextend)
+library(factoextra)
+library(corrplot)
+library("PerformanceAnalytics")
+print_table<-function(mat){
+  addtorow          <- list()
+  addtorow$pos      <- list()
+  addtorow$pos[[1]] <- c(0)
+  addtorow$command  <- c(
+    paste(
+      "\\hline \n",
+      "\\endhead \n",
+      "\\hline \n",
+      "\\multicolumn{3}{l}{\\footnotesize Continued on next page} \n",
+      "\\endfoot \n",
+      "\\endlastfoot \n",sep = ""
+    )
+  )
+  cat(
+    sprintf(
+      "\\begin{center}\n\\captionof{table}{Wide ranges of continious peaks (width>%d)}\n\\scriptsize",50
+    )
+  )
+  print(
+    xtable(
+      mat)
+    ,size = "small",include.colnames = TRUE,
+    tabular.environment = "longtable",
+    floating = FALSE,include.rownames = TRUE,
+    add.to.row = addtorow,
+    hline.after =c(-1)
+  )
+  cat("\\end{center}\n ")
+}
+```
+# Load data
+
+Загрузим сырые данные из файлов, пока без обработки и поиска пиков. Основная идея этого этапа анализа: посмотреть как сырые данные отличаются у различных типов опухолей, между здоровыми тканями мозга и между здоровой тканью и опухолями.
+
+Первым этапом, создадим слегка загрубленные данные, путем аппроксимации спектров с шагом 0.01. Кроме того, извлечем из спектров данные по общей величине ионного тока, для дальнейшего анализа процесса экстракции в различных образцах (TODO: добавить поиск изотопов, аддуктов и многозарядников).
+```{r read.dir, cache=FALSE}
+metaData<-read.csv(file = '/Users/lptolik/Yandex.Disk.localized/BDmzXML/FT_centroid/metadata1.csv',sep=';')
+mzFileName<-'mzDataTS5s.Rdata'
+if(file.exists(mzFileName)){
+  load(mzFileName)
+  #uniquemz<-seq(from=100,to=1300,by=0.01)
+  uniquetm<-seq(from=0,to=900,by=5)
+}else{
+  mzData<-list()
+  uniquemz<-seq(from=100,to=1300,by=0.01)
+  uniquetm<-seq(from=0,to=900,by=5)
+  for(j in 1:dim(metaData)[1]){
+    cat(paste(metaData$FName[j],':'))
+    xraw <- xcmsRaw(
+      paste0(
+        '/Users/lptolik/Yandex.Disk.localized/BDmzXML/FT_centroid/',
+        metaData$FName[j]))
+    sel <- profRange(xraw)
+     cat(' read; ')
+    accum<-rep(0,length(uniquemz))
+    accumTS<-matrix(0,nrow=length(uniquetm),ncol = length(uniquemz))
+    for (i in seq(along = sel$scanidx)) {
+      scan <- as.data.table(getScan(xraw, sel$scanidx[i], sel$mzrange))
+      scan$mzS<-findInterval(scan$mz,uniquemz)
+      scan<-scan[,list(intS=sum(intensity),msA=mean(mz)),by=c('mzS')]
+      accum[scan$mzS]<-accum[scan$mzS]+scan$intS
+      if(xraw@scantime[i]<=max(uniquetm)){
+        ts<-findInterval(xraw@scantime[i],uniquetm)
+        accumTS[ts,scan$mzS]<-accumTS[ts,scan$mzS]+scan$intS
+      }
+    }
+    cat('Done.\n')
+    apptic<-spline(x=xraw@scantime,y=xraw@tic,method = 'nat', xout = uniquetm)$y#
+    
+    #points <- cbind(mz = uniquemz, intensity = accum/length(sel$scanidx))
+    
+    mzData[[j]]<-list(fname=metaData$FName[j],
+                      xraw=xraw,
+                      spec=accum,#/length(sel$scanidx),
+                      tic=apptic,
+                      eic=Matrix(accumTS, sparse = TRUE),
+                      sel=sel)
+    if(j%%15==0){save.image(file=sprintf('tmp%d.Rdata',j))}
+  }
+  save(mzData,uniquemz,file = mzFileName)
+}
+```
+Построим PCA для данных нормированных на ионный ток
+
+```{r make.pca,cache=FALSE}
+msScan<-ldply(.data=mzData,.fun=function(.x).x$spec/sum(.x$spec))[,-1]
+names(msScan)<-paste('mz',uniquemz[-1],sep='')
+numscan<-unlist(sapply(mzData,function(.x).x$sel$scanrange[2]))
+tics<-unlist(sapply(mzData,function(.x)sum(.x$xraw@tic)))
+pca<-PCA(msScan, scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Full data set")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Full data set")
+fviz_pca_ind(pca, habillage=metaData$state, 
+             addEllipses=TRUE, 
+             ellipse.level=0.95)+labs(title = "Full data set")
+ggplot(as.data.frame(t(msScan[110,])),
+       aes(x=uniquemz[-1],y=t(msScan[110,])))+
+  geom_line() +
+  geom_point(shape='x',size=2)
+rtrange<-ldply(.data=mzData,.fun=function(.x).x$sel$rtrange)
+names(rtrange)<-c('start','stop')
+```
+
+Три образца (102,103 и 104) сканировали очень недолго, соответственно они содержат только 47, 41 и 16 сканов. Посмотрим, как изменятся результаты, если мы уберем эти образцы из рассмотрения:
+
+```{r no.short, cache=TRUE}
+pca<-PCA(msScan[-c(102:104),], scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Short scans omitted")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Short scans omitted")
+fviz_pca_ind(pca, habillage=metaData$state[-c(102:104)],addEllipses=TRUE, ellipse.level=0.95)+labs(title = "Short scans omitted")
+
+```
+
+А теперь построим PCA для данных, в которых спектры образцов отнормированных от 0 до 1:
+```{r pca.norm, cache=TRUE}
+maxSp<-apply(msScan,1,max)
+normSp<-t(scale(t(msScan),center = FALSE,scale = maxSp))
+pca<-PCA(normSp[-c(102:104),], scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Normalized to [0,1]")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Normalized to [0,1]")
+fviz_pca_ind(pca, habillage=metaData$state[-c(102:104)],
+             addEllipses=TRUE, ellipse.level=0.95)+labs(title = "Normalized to [0,1]")
+
+```
+
+
+А теперь построим PCA для данных, в которых спектры образцов отнормированных на стандартное отклонение:
+```{r pca.scale, cache=TRUE}
+sdSp<-apply(msScan,1,sd)
+normSp<-t(scale(t(msScan),center = FALSE,scale = sdSp))
+pca<-PCA(normSp[-c(102:104),], scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Normalized to sd")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Normalized to sd")
+fviz_pca_ind(pca, habillage=metaData$state[-c(102:104)],
+             addEllipses=TRUE, ellipse.level=0.95)+labs(title = "Normalized to sd")
+
+```
+
+```
+{r tic.prepare, cahe=TRUE}
+sstart<-sapply(mzData,function(.x).x$sel$rtrange[1])
+send<-sapply(mzData,function(.x).x$sel$rtrange[2])
+sstep<-sapply(mzData,function(.x)diff(.x$sel$rtrange)/.x$sel$scanrange[2])
+```
+
+# Метаболиты
+```{r select.mm, cache=TRUE}
+mmB<-which(uniquemz==250)
+mmScan<-msScan[,1:mmB]
+pca<-PCA(mmScan[-c(102:104),], scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Molecules mZ 100-250")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Molecules mZ 100-250")
+fviz_pca_ind(pca, habillage=metaData$state[-c(102:104)],addEllipses=TRUE, ellipse.level=0.95)+labs(title = "Molecules mZ 100-250")
+fviz_pca_ind(pca, habillage=metaData$Grade[-c(102:104)],
+             addEllipses=FALSE)+labs(title = "Molecules mZ 100-250")
+fviz_pca_ind(pca, habillage=metaData$Diagnosis[-c(102:104)],
+             addEllipses=FALSE)+labs(title = "Molecules mZ 100-250")
+
+```
+```{r select.lm, cache=TRUE}
+lmScan<-msScan[,-(1:mmB)]
+pca<-PCA(lmScan[-c(102:104),], scale.unit = FALSE, ncp = 5, graph = FALSE)
+fviz_screeplot(pca, ncp=10)+labs(title = "Molecules mZ 250-1300")
+fviz_pca_ind(pca, habillage='none',label = 'none', 
+             addEllipses=FALSE)+labs(title = "Molecules mZ 250-1300")
+fviz_pca_ind(pca, habillage=metaData$state[-c(102:104)],addEllipses=TRUE, ellipse.level=0.95)+labs(title = "Molecules mZ 250-1300")
+fviz_pca_ind(pca, habillage=metaData$Grade[-c(102:104)],
+             addEllipses=FALSE)+labs(title = "Molecules mZ 250-1300")
+```
+
+# Reduce the set size
+Для уменьшения количества столбцов матрицы используем два подхода:
+
+1. Волюнтаристский: удалим все столбцы, которы не содержат ни одного пика выше порога
+2. Дата-зависимый: вычислим характеристики каждого столбца и отфильтруем наилучшие
+
+```{r analysis.thresholding, cache=TRUE}
+th<-10^seq(1,6+log10(max(max(msScan))),by=0.25)/1e6
+thres.df<-data.frame(th=c(0,th),N=-1,min=1e8,median=-1,mean=-1,q1=-1,q3=-1,L=-1)
+th.idx<-list(th0=1:dim(msScan)[2])
+tmp<-msScan
+colsums<-list(th0=colSums(x = tmp))
+i<-1
+thres.df$N[i]<-dim(tmp)[2]
+thres.df$min[i]<-min(unlist(msScan[,th.idx[[i]]]))
+thres.df$median[i]<-median(unlist(msScan[,th.idx[[i]]]))
+thres.df$mean[i]<-mean(unlist(msScan[,th.idx[[i]]]))
+thres.df$q1[i]<-quantile(unlist(msScan[,th.idx[[i]]]),probs = 0.25)
+thres.df$q3[i]<-quantile(unlist(msScan[,th.idx[[i]]]),probs = 0.75)
+thres.df$L[i]<-length(which(unlist(msScan[,th.idx[[i]]])<=thres.df$th[i]))
+i<-i+1
+for(t in th){
+  tmp[tmp<t]<-0
+  cs<-colSums(x = tmp)
+  colsums[[i]]<-cs
+  indx<-which(cs>0)
+  th.idx[[i]]<-th.idx[[i-1]][indx]
+  tmp<-tmp[,indx]
+  thres.df$N[i]<-dim(tmp)[2]
+  thres.df$min[i]<-min(unlist(msScan[,th.idx[[i]]]))
+  thres.df$median[i]<-median(unlist(msScan[,th.idx[[i]]]))
+  thres.df$mean[i]<-mean(unlist(msScan[,th.idx[[i]]]))
+  thres.df$q1[i]<-quantile(unlist(msScan[,th.idx[[i]]]),probs = 0.25)
+  thres.df$q3[i]<-quantile(unlist(msScan[,th.idx[[i]]]),probs = 0.75)
+  thres.df$L[i]<-length(which(unlist(msScan[,th.idx[[i]]])<=thres.df$th[i]))
+  i<-i+1
+}
+names(th.idx)[-1]<-sprintf('th%3.1e',th)
+names(colsums)[-1]<-sprintf('th%3.1e',th)
+save(thres.df,th.idx,colsums,file = 'subsetting.Rdata')
+qplot(th,N,data = thres.df,geom='line',log='xy')+geom_point()
+#qplot(t,min,data = thres.df,geom='line')
+qplot(th,median,data = thres.df,geom='line',log = 'x')+geom_point()
+qplot(th,mean,data = thres.df,geom='line',log = 'xy')+geom_point()
+qplot(th,q1,data = thres.df,geom='line',log='x')+geom_point()
+qplot(th,q3,data = thres.df,geom='line',log='x')+geom_point()
+qplot(th,L,data = thres.df,geom='line',log='xy')+geom_point()
+```
+
+# Временной анализ 
+Рассмотрим какие характерные виды временных профилей встречаются в наших данных. Для этого соберем длинную таблицу и построим для каждого иона и каждого сампла SAX профиль, а потом их прокластеризуем. Для уменьшения количества анализируемых данных мы выкинем однопиковые ионы.
+
+```{r time.step.hist2d}
+i<-1
+tstep<-data.frame(idx=i,dt=diff(mzData[[i]]$xraw@scantime[mzData[[i]]$xraw@scantime<=900]))
+for(i in 2:length(mzData)){
+  tstep<-rbind(tstep,data.frame(idx=i,dt=diff(mzData[[i]]$xraw@scantime[mzData[[i]]$xraw@scantime<=900])))
+}
+p<-ggplot(data = tstep,aes(x=idx,y=dt))
+print(p+geom_bar(stat="identity"))
+print(p+geom_point())
+print(p+ stat_bin2d())
+print(p+ stat_bin2d()+ scale_fill_gradientn(colours = terrain.colors(32), trans="log"))
+
+```
+
+
+```{r peaks.flow.ts,cache=TRUE}
+if(file.exists('peaks.Rdata')){
+  load('peaks.Rdata')
+}else{
+  library(doParallel)
+  nodes <- detectCores()-1
+  cl <- makeCluster(nodes)
+  registerDoParallel(cl)
+  clusterEvalQ(cl, library(Matrix,xcms))
+  
+  runAgg<-function(.x){
+    r<-rle(.x>0)
+    idx<-which(r$values)
+    c(N=length(idx),
+      Max=max(r$lengths[idx]),
+      Mean=mean(r$lengths[idx]),
+      Sum=sum(r$lengths[idx]),
+      accum=sum(.x))
+  }
+  uniquemz<-uniquemz#[-120001]
+  i<-1
+  eic<-mzData[[i]]$eic#[,-120001]
+  nzCol<-which(colSums(eic)>0)
+  chromatogram900<-adply(.data = eic[,nzCol],
+                      .margins = 2,
+                      .fun = runAgg,
+                      .parallel = TRUE,
+                      .progress = 'text')
+  chromatogram900<-cbind(data.frame(indx=i,
+                                 mz=uniquemz[nzCol],
+                                 Intsty=as.vector(t(msScan[i,nzCol]))),
+                      chromatogram900[,-1])
+  nzCol<-which(colSums(eic[1:60,])>0)
+  chromatogram300<-adply(.data = eic[1:60,nzCol],
+                      .margins = 2,
+                      .fun = runAgg,
+                      .parallel = TRUE,
+                      .progress = 'text')
+  chromatogram300<-cbind(data.frame(indx=i,
+                                 mz=uniquemz[nzCol],
+                                 Intsty=as.vector(t(msScan[i,nzCol]))),
+                      chromatogram300[,-1])
+  for(i in 2:length(mzData)){
+    eic<-mzData[[i]]$eic[,-120001]
+    nzCol<-which(colSums(eic)>0)
+    ch<-adply(.data = eic[,nzCol],
+              .margins = 2,
+              .fun = runAgg,
+              .parallel = TRUE,
+              .progress = 'text')
+    ch<-cbind(data.frame(indx=i,
+                         mz=uniquemz[nzCol],
+                         Intsty=as.vector(t(msScan[i,nzCol]))),
+              ch[,-1])
+    chromatogram900<-rbind(chromatogram900,ch)
+    nzCol<-which(colSums(eic[1:60,])>0)
+    ch<-adply(.data = eic[1:60,nzCol],
+              .margins = 2,
+              .fun = runAgg,
+              .parallel = TRUE,
+              .progress = 'text')
+    ch<-cbind(data.frame(indx=i,
+                         mz=uniquemz[nzCol],
+                         Intsty=as.vector(t(msScan[i,nzCol]))),
+              ch[,-1])
+    chromatogram300<-rbind(chromatogram300,ch)
+    cat(paste(i,'\n'))
+  }
+  stopCluster(cl)
+  fpks900<-ddply(.data = chromatogram900,
+              .variables = .(indx),
+              summarize,
+              sumN=sum(N),
+              intstty=sum(Intsty),
+              sumS=sum(Sum),
+              max=max(Max),
+              accum=sum(accum),
+              accumM=max(accum))
+  fpks300<-ddply(.data = chromatogram300,
+              .variables = .(indx),
+              summarize,
+              sumN=sum(N),
+              intstty=sum(Intsty),
+              sumS=sum(Sum),
+              max=max(Max),
+              accum=sum(accum),
+              accumM=max(accum))
+  chromatogram900$accumTIC<-chromatogram900$accum/fpks900$accum[chromatogram900$indx]
+  chromatogram900$accumMax<-chromatogram900$accum/fpks900$accumM[chromatogram900$indx]
+  chromatogram300$accumTIC<-chromatogram300$accum/fpks300$accum[chromatogram300$indx]
+  chromatogram300$accumMax<-chromatogram300$accum/fpks300$accumM[chromatogram300$indx]
+  
+  save(chromatogram900,chromatogram300,fpks900,fpks300,file = 'peaks.Rdata')
+}
+```
+
+Мы построили две таблицы для хроматограмм длиной 300 и 900 секунд, каждая таблица  содержит 10 столбцов описывающих характеристики непрерывных цепочек ненулевых токов (ранов/прогонов/сеанс/отрезов) для каждой ячейки по m/z:
+1. indx -- номер спектра/образца/хроматограммы
+2. mz -- положение бина
+3. Intsty -- суммарная интенсивность иона нормированная на суммарный ионный ток. Характеристика общей интенсивности сигнала в данной области в образце. 
+4. N -- общее число ранов в образце
+5. Max -- максимальная длина одного рана/отрезка
+6. Mean -- средняя длина одного рана/отрезка 
+7. Sum -- суммарная длина всех ранов/отрезков
+8. accum -- накопленная во всех ранах/отрезках интенсивность 
+9. accumTIC -- отношение интенсивности бина к суммарному ионному току на рассматриваемом отрезке времени.
+10.accumMax -- отношение интенсивности бина к максимальной из всех бинов спектра/образца/хроматограммы на рассматриваемом отрезке времени.
+
+
+```{r chromatogram900.plots.N,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram900,aes(N))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram900,aes(x=N,y=indx))+ 
+  stat_bin2d()+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")+
+  geom_path(aes(y=1:dim(rtrange)[1],x=stop/15),rtrange)+
+  xlim(0,60)
+
+```
+
+```{r chromatogram900.plots.Max,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram900,aes(Max))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram900,aes(x=N,y=Max))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram900,aes(x=Max,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")+
+  geom_path(aes(y=1:dim(rtrange)[1],x=stop/5),rtrange)
+
+```
+
+```{r chromatogram900.plots.Mean,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram900,aes(Mean))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p+ stat_ecdf())
+ggplot(chromatogram900,aes(x=N,y=Mean))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram900,aes(x=Mean,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")+
+  geom_path(aes(y=1:dim(rtrange)[1],x=stop/5),rtrange)
+
+
+```
+
+```{r chromatogram900.plots.Sum,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram900,aes(Sum))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram900,aes(x=N,y=Sum))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram900,aes(x=Sum,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")+
+  geom_path(aes(y=1:dim(rtrange)[1],x=stop/5),rtrange)
+
+
+```
+
+```{r chromatogram300.plots.N,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram300,aes(N))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram300,aes(x=N,y=indx))+ 
+  stat_bin2d()+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+
+```
+```{r chromatogram300.plots.Max,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram300,aes(Max))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram300,aes(x=N,y=Max))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram300,aes(x=Max,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+
+```
+```{r chromatogram300.plots.Mean,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram300,aes(Mean))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram300,aes(x=N,y=Mean))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram300,aes(x=Mean,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ 
+
+```
+
+```{r chromatogram300.plots.Sum,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+p<-ggplot(chromatogram300,aes(Sum))
+print(p+geom_histogram())
+print(p+geom_histogram()+scale_x_log10())
+print(p+geom_histogram()+scale_x_log10()+scale_y_log10())
+print(p + stat_ecdf())
+ggplot(chromatogram300,aes(x=N,y=Sum))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram300,aes(x=Mean,y=Sum))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram300,aes(x=Max,y=Sum))+ 
+  stat_bin2d(bins = 50)+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+ggplot(chromatogram300,aes(x=Sum,y=indx))+ 
+  stat_bin2d(bins = c(60,114))+ 
+  scale_fill_gradientn(colours = terrain.colors(32), 
+                       trans="log10")
+
+```
+
+
+```
+{r peaks.flow.ts,cache=TRUE}
+if(file.exists('fpks.Rdata')){
+  load('fpks.Rdata')
+}else{
+    i<-1
+eic<-mzData[[i]]$eic
+#rleL<-RleList(apply(eic,2,function(.x)Rle(.x>0)))
+#pks<-sapply(runLength(rleL)[runValue(rleL)],sum)
+#pkn<-sapply(runLength(rleL)[runValue(rleL)],length)
+
+pks<-apply(eic,2,function(.x)length(which(.x>0)))
+fpks<-as.data.frame(t(pks))
+names(fpks)<-paste('mz',uniquemz,sep='')
+#feic<-as.data.frame(eic/sum(mzData[[i]]$spec))
+#names(feic)<-paste('mz',uniquemz,sep='')
+#feic<-cbind(data.frame(SID=i,rt=uniquetm),feic)
+for(i in 2:length(mzData)){
+  eic<-mzData[[i]]$eic
+  pks<-apply(eic,2,function(.x)length(which(.x>0)))
+  names(pks)<-paste('mz',uniquemz,sep='')
+  fpks<-rbind(fpks,as.data.frame(t(pks)))
+  #teic<-as.data.frame(eic/sum(mzData[[i]]$spec))
+  #names(teic)<-paste('mz',uniquemz,sep='')
+  #feic<-rbind(feic,cbind(data.frame(SID=i,rt=uniquetm),teic))
+  #cat(paste(i,'\n'))
+}
+fpks<-fpks[,-1]
+save(fpks,file = 'fpks.Rdata')
+}
+```
+
+```
+{r some.plots,cache=TRUE,dev='png',fig.ext='png',dpi=900,fig.width=6.5,fig.height=8.5,warning=FALSE,results='asis',eval=TRUE}
+nms<-sub('(_FT100k)?.raw.mzXML','',metaData$FName)
+chromatogram$Name<-factor(nms[chromatogram$indx])
+qplot(colSums(fpks),colSums(msScan),log='xy')
+cor.mat<- round(cor(t(fpks)),3)
+corrplot(cor.mat,  cl.pos="n", tl.pos="n")
+#chart.Correlation(fpks, histogram=TRUE, pch=19)
+d.cor <- as.dist(1 - cor.mat)
+hc.cor<-hclust(d.cor, method = "ward.D2")
+plot(hc.cor, cex = 0.6)
+grp.cor <- cutree(hc.cor, k = 4)
+rect.hclust(hc.cor, k = 4, border = 2:5)
+fviz_cluster(list(data = fpks, cluster = grp.cor))
+
+```
+```
+{r cluster.pks}
+hc.euc<-hclust(dist(fpks),method = 'ward.D2')
+plot(hc.euc, cex = 0.6)
+grp.euc <- cutree(hc.euc, k = 4)
+rect.hclust(hc.euc, k = 4, border = 2:5)
+fviz_cluster(list(data = fpks, cluster = grp.euc))
+
+```
+```
+{r table.4.grp,results='asis'}
+grp.tot<-cbind(as.data.frame((grp.euc)),as.data.frame((grp.cor)))
+print(xtable(grp.tot))
+```
+
+# Аминолевулиновая кислота и Протопорфирин 
+```{r protoporphyrinIX.900,cache=TRUE}
+protoporphyrinH<-c(561.25,130.05,225.08,853.27,835.26,835.26,829.22,659.30,653.26,567.29)
+ppIXdf<-chromatogram900[chromatogram900$mz%in%protoporphyrinH,]
+idxppIX<-which(ppIXdf$mz==561.25)
+qplot(ppIXdf$accumTIC[idxppIX],log = 'x')
+qplot(ppIXdf$accum[idxppIX],log = 'x')
+qplot(ppIXdf$Intsty[idxppIX],log = 'x')
+
+```
+```{r protoporphyrinIX.300,cache=TRUE}
+#protoporphyrinH<-c(561.25,130.05,225.08,853.27,835.26,835.26,829.22,659.30,653.26,567.29)
+ppIXdf<-chromatogram300[chromatogram300$mz%in%protoporphyrinH,]
+ppIXdf$Patient<-metaData$Patient[ppIXdf$indx]
+
+idxppIX<-which(ppIXdf$mz==561.25)
+qplot(ppIXdf$accumTIC[idxppIX],log = 'x')
+qplot(ppIXdf$accum[idxppIX],log = 'x')
+qplot(ppIXdf$Intsty[idxppIX],log = 'x')
+p<-ggplot(data = ppIXdf,aes(y=Sum,x=Patient))
+print(p + geom_jitter()+coord_flip())
+print(p + geom_boxplot()+coord_flip())
+print(p + geom_dotplot()+coord_flip())
+print(p + geom_violin()+coord_flip())
+p<-ggplot(data = ppIXdf[idxppIX,],aes(y=accum,x=Patient))
+print(p+geom_boxplot()+coord_flip())
+p<-ggplot(data = ppIXdf[idxppIX,],aes(y=accumMax,x=Patient))
+print(p+geom_boxplot()+coord_flip())
+
+```
+
+
+# SessionInfo
+```{r sessionInfo}
+sessionInfo()
+```
+

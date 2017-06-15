@@ -9,17 +9,15 @@ function(.xcms){
                       scan=1,
                       delta=NA,
                       adduct=NA)[FALSE,]
-    
-    for (i in seq(along = sel$scanidx)) {
-        scan <- as.data.table(getScan(xraw, sel$scanidx[i], sel$mzrange))
-        p<-scan
-        p$ion<-NA
-        p$MP<-NA
-        p$time<-xraw@scantime[i]
-        p$scan<-i
-        p$delta<-NA
-        p$adduct<-NA
-        peaks<-rbind(peaks,p)
-    }
+    l<-list()
+    l<-lapply(sel$scanidx,function(i){
+      scan <- as.data.table(getScan(xraw, sel$scanidx[i], sel$mzrange))
+      p<-scan
+      p$ion<-NA
+      p$time<-xraw@scantime[i]
+      p$scan<-i
+      return(p)
+    })
+    peaks<-as.data.table(ldply(l,rbind))
     return(peaks)
 }

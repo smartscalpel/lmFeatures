@@ -1,5 +1,13 @@
-makePeaks <-
-function(.xcms){
+#' Converts XCMS data into MZ table
+#'
+#'Creates data.table with five columns: 'mz', 'intensity', 'ion', 'time', 'scan'
+#' @param .xcms xcmzRaw data to convert
+#'
+#' @return ata.table with five columns: 'mz', 'intensity', 'ion', 'time', 'scan'
+#' @export
+#'
+#'
+makePeaks <- function(.xcms){
     sel <- profRange(.xcms)
     peaks<-data.frame(mz=100.0,
                       intensity=1.0e6,

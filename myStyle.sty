@@ -1,0 +1,33 @@
+\usepackage[OT1]{fontenc}
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+\usepackage[english]{babel}
+\usepackage{grffile}
+\usepackage{rotating}
+\usepackage{caption}
+\usepackage{longtable}
+\usepackage{lscape}
+\usepackage{float}
+
+\usepackage{color}
+\definecolor{lightgray}{gray}{0.95}
+
+\usepackage{listings}
+\lstset{
+language=R,                			% choose the language of the code
+basicstyle=\verbatim@font,      % the size of the fonts that are used for the code
+%breaklines=true,                % sets automatic line breaking
+%breakatwhitespace=true,					%force breaks at white space
+showspaces=false,								%don't display funky characters where there are spaces
+showstringspaces=false,					%show spaces within strings
+columns=fullflexible,						%makes character spacing nice
+,captionpos=t,tabsize=3,frame=tb,
+%   keywordstyle=\color{blue},
+%   commentstyle=\color{gray},stringstyle=\color{red},
+   numbers=right,
+   numberstyle=\small,
+   numbersep=5pt,breaklines=true,showstringspaces=false,
+   basicstyle=\footnotesize,emph={label},breakatwhitespace=false,escapeinside={`}{`}
+}
+\floatstyle{ruled}
+\newfloat{program}{thp}{lop}
+\floatname{program}{Listing}

@@ -33,3 +33,201 @@ function(.peaks,.epsilon=5e-3,.epsC13=5e-4){
     # }
     return(.peaks)
 }
+alignPeaksDT<-function(.pdt,.epsilon=5e-3,.epsC13=5e-4){
+  #Align topmost peak
+  idx<-which(is.na(.pdt$ion))
+  cP<-which.max(.pdt$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-.pdt$mz[ionI]
+  idx<-which(abs(.pdt$mz-maxMZ)<.epsilon&is.na(pdt$ion))
+  if(length(idx)>300){
+    lm(mz~time,data=.pdt[idx,])->md
+    if(any(abs(md$residuals) >2 * sd(md$residuals))){
+      idx<-idx[-which(abs(md$residuals) >2 * sd(md$residuals))]
+      lm(mz~time,data=.pdt[idx,])->md1
+    }else{
+      md1<-md
+    }
+    .pdt$lm[idx]<-md1$coefficients[2]
+    .pdt$ion[idx]<-md1$coefficients[1]
+  }else{
+    .pdt$ion[idx]<-maxMZ
+  }
+  return(.pdt)
+}
+
+get_Rle<-function(.scan,.max){
+  require(IRanges)
+  xf <- rep(0, .max)
+  xf[.scan] <- 1
+  Rle(xf) -> r
+  return(r)
+}
+
+get_Rle_nogaps<-function(.scan,.max,.gap=1,.factor=10){
+  r<-get_Rle(.scan,.max)
+  rll<-runLength(r)
+  rl1<-which(rll<=.gap)
+  rv0<-which(runValue(r)==0)
+  if(any(rl1%in%rv0)){
+    rl1v0<-rl1[rl1%in%rv0]
+    seq<-cumsum(rll)
+    check<-function(.x){
+      l<-FALSE
+      r<-l
+      if(.x==1){
+        l<-TRUE
+      }else if(rll[.x-1]>=.factor*.gap){
+        l<-TRUE
+      }
+      if(.x==length(rll)){
+        r<-TRUE
+      }else if(rll[.x+1]>=.factor*.gap){
+        r<-TRUE
+      }
+      if(l&r){
+        return(1)
+      }else{
+        return(0)
+      }
+    }
+    subs<-unlist(sapply(rl1v0,check))
+    r[seq[rl1v0]]<-subs
+  }
+  return(r)
+}
+
+get_runLen <- function(.scan, .max) {
+  r<-get_Rle(.scan,.max)
+  return(runLength(r)[which(runValue(r)==1)])
+}
+
+
+alignPeaksDTrle <- function(pdt.,
+                            ppm. = 20,
+                            ppm.C13 = 20) {
+  idx <- which(is.na(pdt.$ion))
+  cP <- which.max(pdt.$intensity[idx])
+  ionI <- idx[cP]
+  maxMZ <- pdt.$mz[ionI]
+  idx <- which(abs(pdt.$mz - maxMZ) < (ppm. * 1e-6 * maxMZ) &
+                 is.na(pdt.$ion))
+  scanLen <- max(pdt.$scan)
+  p. <- pdt.[idx, ]
+  if(length(idx) >= min(300, 0.5 * scanLen)){
+    ct1 <- cutTreeHybrid(p.)
+    cct1 <- ct1[which.max(p.$intensity)]
+    id.1 <- idx[ct1 == cct1]
+    mz1 <- median(pdt.$mz[id.1])
+    rl <- get_runLen(pdt.$scan[id.1], scanLen)
+    if (length(id.1) >= min(300, 0.5 * scanLen) || max(rl) > 100) {
+      pdt.$clIon1[id.1] <- mz1
+      pdt.$ion[id.1] <- mz1
+      lm(mz ~ time, data = pdt.[id.1, ]) -> md
+      if (any(abs(md$residuals) > 2 * sd(md$residuals))) {
+        id.2 <- id.1[-which(abs(md$residuals) > 2 * sd(md$residuals))]
+        lm(mz ~ time, data = pdt.[id.2, ]) -> md1
+      } else{
+        md1 <- md
+        id.2 <- id.1
+      }
+      pdt.$lm[id.2] <- md1$coefficients[2]
+      pdt.$clIon2[id.2] <- md1$coefficients[1]
+      # r<-get_Rle_nogaps()
+      # rll<-runLength(r)
+      # seq<-cumsum(rll)
+    } else{
+      pdt.$ion[ionI] <- -Inf
+    }
+  } else{
+    pdt.$ion[ionI] <- -Inf
+  }
+  return(pdt.)
+}
+
+cutTreeHybrid<-function(p.){
+  dissim1 = dist(p.$mz)
+
+  dendro1 <- hclust(d = dissim1, method = 'average')
+  ct1 <- cutreeDynamic(
+    dendro1,
+    cutHeight = NULL,
+    minClusterSize = 30,
+    method = "hybrid",
+    deepSplit = 0,
+    pamStage = TRUE,
+    distM = as.matrix(dissim1),
+    maxPamDist = 0,
+    verbose = 0
+  )
+
+  return(ct1)
+}
+alignPeaksDTppm<-function(.pdt,.ppm=20,.ppmC13=20){
+  #Align topmost peak
+  idx<-which(is.na(.pdt$ion))
+  cP<-which.max(.pdt$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-.pdt$mz[ionI]
+  idx<-which(abs(.pdt$mz-maxMZ)<(.ppm*1e-6*maxMZ)&is.na(pdt$ion))
+  scanLen<-max(.pdt$scan)
+  rl<-get_runLen(.pdt$scan[idx],scanLen)
+  if(length(idx)>=min(300,0.5*scanLen)|max(rl)>100){
+    lm(mz~time,data=.pdt[idx,])->md
+    if(any(abs(md$residuals) >2 * sd(md$residuals))){
+      idx<-idx[-which(abs(md$residuals) >2 * sd(md$residuals))]
+      lm(mz~time,data=.pdt[idx,])->md1
+    }else{
+      md1<-md
+    }
+    .pdt$lm[idx]<-md1$coefficients[2]
+    .pdt$ion[idx]<-md1$coefficients[1]
+  }else{
+    # .pdt$ion[idx]<-maxMZ
+    .pdt$ion[ionI]<- -Inf
+  }
+  return(.pdt)
+}
+
+freqTable<-function(x,breaks,labels){
+  if(length(breaks)-length(labels)!=1)
+    stop("labels should be 1 element shorter then breaks \n")
+
+  hist(x,breaks,plot=FALSE)->hrl
+  res<-t(data.frame(h=hrl$counts,row.names = labels))
+
+  return(res)
+}
+
+runLenTable<-function(scans,scanLen){
+  rl <- get_runLen(scans, scanLen)
+  return(prepRunLenTable(rl))
+}
+
+gapRunLenTable<-function(scans,scanLen){
+  r<-get_Rle_nogaps(scans,scanLen)
+  rl<-runLength(r)[which(runValue(r)==1)]
+  return(prepRunLenTable(rl,prefix = 'gl'))
+}
+
+scanOverlapTable<-function(scan){
+  breaks<-c(0:5,Inf)
+  labels<-c(paste0('ns',1:5),'ns>5')
+  return(freqTable(table(scan),breaks = breaks,labels = labels))
+}
+
+prepRunLenTable<-function(rl,prefix='rl'){
+  breaksD<-c(0,10,50,100,500,1000,5000,10000,50000)
+  breaks<-c(breaksD[breaksD<scanLen],scanLen)
+  labels<-paste0(prefix,breaks[-1])
+  return(freqTable(rl,breaks,labels))
+}
+
+
+rlTableFun <- function(.x) {
+  return(cbind(
+    scanOverlapTable(.x$scan),
+    gapRunLenTable(.x$scan, scanLen = scanLen),
+    runLenTable(.x$scan, scanLen)
+  ))
+}

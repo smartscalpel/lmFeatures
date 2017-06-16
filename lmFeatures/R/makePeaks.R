@@ -12,11 +12,8 @@ makePeaks <- function(.xcms){
     peaks<-data.frame(mz=100.0,
                       intensity=1.0e6,
                       ion=NA,
-                      MP=NA,
                       time=0.0,
-                      scan=1,
-                      delta=NA,
-                      adduct=NA)[FALSE,]
+                      scan=1)[FALSE,]
     l<-list()
     l<-lapply(sel$scanidx,function(i){
       scan <- as.data.table(getScan(xraw, sel$scanidx[i], sel$mzrange))

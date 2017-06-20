@@ -311,7 +311,19 @@ if (all(!is.na(l$coefficients))) {
           color = color) +
       geom_abline(intercept = l$coefficients[1],
           slope = l$coefficients[2])
-  print(multiplot(p5, p6, cols = 1))
+  
+  p.$resPPM<-rl*1e6/l$coefficients[1]
+  p7<-qplot(resPPM,data=p.[idL],
+            binwidth=binwidth,color=color)+
+    stat_function(fun = function(x, mean, sd, n, bw){
+      dnorm(x = x, mean = mean, sd = sd) * n * bw
+      },
+      args = c(mean = mean(p.$resPPM[idL]), 
+               sd = sd(p.$resPPM[idL]), 
+               n = length(idL), 
+               bw = binwidth))
+
+  print(multiplot(p5, p6, p7, cols = 1))
 }
 ```
 

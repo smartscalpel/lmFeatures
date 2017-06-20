@@ -183,13 +183,20 @@ get_runLen <- function(.scan, .max) {
   return(runLength(r)[which(runValue(r)==1)])
 }
 
-
+getFeature<-function(l,p.,th=2.0){
+  range(l$residuals[abs(rstandard(l)) <= 2]) -> bnd
+  pl <- predict(l, p.)
+  rl <- p.$mz - pl
+  idL <- which(rl >= bnd[1] & rl <= bnd[2])
+  return(idL)
+}
 ```
 
 ```{r set.constants,include=FALSE}
   FName<-'0_00_HealthyBrain_0_FT100k.raw.mzXML'
   path<-'/Users/lptolik/Yandex.Disk.localized/BDmzXML/FT_centroid/'
   ppm<-50
+  binwidth<-0.1
   .pal <- brewer.pal(12,'Paired')
 ```
 

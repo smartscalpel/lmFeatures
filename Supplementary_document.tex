@@ -309,7 +309,19 @@ than two standard deviations:
           \DataTypeTok{color =}\NormalTok{ color) }\OperatorTok{+}
 \StringTok{      }\KeywordTok{geom_abline}\NormalTok{(}\DataTypeTok{intercept =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{],}
           \DataTypeTok{slope =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{2}\NormalTok{])}
-  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
+  
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{resPPM<-rl}\OperatorTok{*}\FloatTok{1e6}\OperatorTok{/}\NormalTok{l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{]}
+\NormalTok{  p7<-}\KeywordTok{qplot}\NormalTok{(resPPM,}\DataTypeTok{data=}\NormalTok{p.[idL],}
+            \DataTypeTok{binwidth=}\NormalTok{binwidth,}\DataTypeTok{color=}\NormalTok{color)}\OperatorTok{+}
+\StringTok{    }\KeywordTok{stat_function}\NormalTok{(}\DataTypeTok{fun =} \ControlFlowTok{function}\NormalTok{(x, mean, sd, n, bw)\{}
+      \KeywordTok{dnorm}\NormalTok{(}\DataTypeTok{x =}\NormalTok{ x, }\DataTypeTok{mean =}\NormalTok{ mean, }\DataTypeTok{sd =}\NormalTok{ sd) }\OperatorTok{*}\StringTok{ }\NormalTok{n }\OperatorTok{*}\StringTok{ }\NormalTok{bw}
+\NormalTok{      \},}
+      \DataTypeTok{args =} \KeywordTok{c}\NormalTok{(}\DataTypeTok{mean =} \KeywordTok{mean}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{sd =} \KeywordTok{sd}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{n =} \KeywordTok{length}\NormalTok{(idL), }
+               \DataTypeTok{bw =}\NormalTok{ binwidth))}
+
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, p7, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
 \NormalTok{\}}
 \end{Highlighting}
 \end{Shaded}
@@ -332,6 +344,486 @@ remove from the list all features which is too short to produse reliable
 regression. Only features wich contains more than 300 points in of more
 than 100 consequtive scans will be preserved. High intensity bursting
 ions should be analysed separately.
+
+\section{MZ=651.477226}\label{mz651.477226}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx<-}\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz}\OperatorTok{-}\FloatTok{651.477226}\NormalTok{)}\OperatorTok{<}\FloatTok{1e-3}\NormalTok{)}
+\NormalTok{  cP<-}\KeywordTok{which.max}\NormalTok{(p}\OperatorTok{$}\NormalTok{intensity[idx])}
+\NormalTok{  ionI<-idx[cP]}
+\NormalTok{  maxMZ<-p}\OperatorTok{$}\NormalTok{mz[ionI]}
+\end{Highlighting}
+\end{Shaded}
+
+The selected row represents the peak with m/z=651.4775 of the scan N=42
+taken at time 56.7 sec:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{print}\NormalTok{(}\KeywordTok{getScanPlot}\NormalTok{(p[scan}\OperatorTok{==}\NormalTok{p}\OperatorTok{$}\NormalTok{scan[ionI]]))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/ion.plots.651-1.pdf}
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z
+value and analyze how they drift with time:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx <-}\StringTok{ }\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{maxMZ) }\OperatorTok{<}\StringTok{ }\NormalTok{(ppm }\OperatorTok{*}\StringTok{ }\FloatTok{1e-6} \OperatorTok{*}\StringTok{ }\NormalTok{maxMZ))}
+\NormalTok{  p. <-}\StringTok{ }\NormalTok{p[idx, ]}
+\end{Highlighting}
+\end{Shaded}
+
+To separate feature from surrounding noise we cluster data in m/z domain
+by hierarchical Ward clustering and select the most stable clusters with
+dynamicTreeCut:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  dissim1 =}\StringTok{ }\KeywordTok{dist}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  dendro1 <-}\StringTok{ }\KeywordTok{hclust}\NormalTok{(}\DataTypeTok{d =}\NormalTok{ dissim1, }\DataTypeTok{method =} \StringTok{'ward.D2'}\NormalTok{)}
+\NormalTok{  ct1 <-}\StringTok{ }\KeywordTok{cutreeDynamic}\NormalTok{(}
+\NormalTok{    dendro1,}
+    \DataTypeTok{cutHeight =} \OtherTok{NULL}\NormalTok{,}
+    \DataTypeTok{minClusterSize =} \DecValTok{30}\NormalTok{,}
+    \DataTypeTok{method =} \StringTok{"hybrid"}\NormalTok{,}
+    \DataTypeTok{deepSplit =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{pamStage =} \OtherTok{TRUE}\NormalTok{,}
+    \DataTypeTok{distM =} \KeywordTok{as.matrix}\NormalTok{(dissim1),}
+    \DataTypeTok{maxPamDist =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{verbose =} \DecValTok{0}
+\NormalTok{  )}
+\NormalTok{  cct1 <-}\StringTok{ }\NormalTok{ct1[}\KeywordTok{which.max}\NormalTok{(p.}\OperatorTok{$}\NormalTok{intensity)]}
+\NormalTok{  id.}\DecValTok{1}\NormalTok{ <-}\StringTok{ }\NormalTok{idx[ct1 }\OperatorTok{==}\StringTok{ }\NormalTok{cct1]}
+\NormalTok{  mz1 <-}\StringTok{ }\KeywordTok{median}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz[id.}\DecValTok{1}\NormalTok{])}
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{color<-.pal[ct1}\OperatorTok{+}\DecValTok{1}\NormalTok{]}
+\NormalTok{  rl <-}\StringTok{ }\KeywordTok{get_runLen}\NormalTok{(p}\OperatorTok{$}\NormalTok{scan[id.}\DecValTok{1}\NormalTok{], scanLen)}
+\NormalTok{  p1<-}\KeywordTok{qplot}\NormalTok{(time,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{main=}\KeywordTok{paste0}\NormalTok{(}\StringTok{'mz'}\NormalTok{,maxMZ),}\DataTypeTok{log=}\StringTok{'y'}\NormalTok{,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p2<-}\KeywordTok{qplot}\NormalTok{(time,mz,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p3<-}\KeywordTok{qplot}\NormalTok{(mz,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p1, p2, p3, }\DataTypeTok{cols=}\DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/cluster.mz.651-1.pdf}
+NULL
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  l<-}\KeywordTok{lm}\NormalTok{(mz }\OperatorTok{~}\StringTok{ }\NormalTok{time, }\DataTypeTok{data =}\NormalTok{ p[id.}\DecValTok{1}\NormalTok{, ])}
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+\NormalTok{  op <-}\StringTok{ }\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow =} \KeywordTok{c}\NormalTok{(}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{), }\DataTypeTok{oma =} \KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{2}\NormalTok{, }\DecValTok{0}\NormalTok{))}
+  \KeywordTok{plot}\NormalTok{(l)}
+  \KeywordTok{par}\NormalTok{(op)}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/fit.lin.651-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+  \KeywordTok{range}\NormalTok{(l}\OperatorTok{$}\NormalTok{residuals[}\KeywordTok{abs}\NormalTok{(}\KeywordTok{rstandard}\NormalTok{(l)) }\OperatorTok{<=}\StringTok{ }\DecValTok{2}\NormalTok{]) ->}\StringTok{ }\NormalTok{bnd}
+\NormalTok{  pl <-}\StringTok{ }\KeywordTok{predict}\NormalTok{(l, p.)}
+\NormalTok{  rl <-}\StringTok{ }\NormalTok{p.}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{pl}
+\NormalTok{  idL <-}\StringTok{ }\KeywordTok{which}\NormalTok{(rl }\OperatorTok{>=}\StringTok{ }\NormalTok{bnd[}\DecValTok{1}\NormalTok{] }\OperatorTok{&}\StringTok{ }\NormalTok{rl }\OperatorTok{<=}\StringTok{ }\NormalTok{bnd[}\DecValTok{2}\NormalTok{])}
+\NormalTok{  p5 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(}
+\NormalTok{          time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.[idL],}
+          \DataTypeTok{color =}\NormalTok{ color,}
+          \DataTypeTok{xlim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{time),}
+          \DataTypeTok{ylim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  )}
+\NormalTok{  p6 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.,}
+          \DataTypeTok{color =}\NormalTok{ color) }\OperatorTok{+}
+\StringTok{      }\KeywordTok{geom_abline}\NormalTok{(}\DataTypeTok{intercept =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{],}
+          \DataTypeTok{slope =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{2}\NormalTok{])}
+  
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{resPPM<-rl}\OperatorTok{*}\FloatTok{1e6}\OperatorTok{/}\NormalTok{l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{]}
+\NormalTok{  p7<-}\KeywordTok{qplot}\NormalTok{(resPPM,}\DataTypeTok{data=}\NormalTok{p.[idL],}
+            \DataTypeTok{binwidth=}\NormalTok{binwidth,}\DataTypeTok{color=}\NormalTok{color)}\OperatorTok{+}
+\StringTok{    }\KeywordTok{stat_function}\NormalTok{(}\DataTypeTok{fun =} \ControlFlowTok{function}\NormalTok{(x, mean, sd, n, bw)\{}
+      \KeywordTok{dnorm}\NormalTok{(}\DataTypeTok{x =}\NormalTok{ x, }\DataTypeTok{mean =}\NormalTok{ mean, }\DataTypeTok{sd =}\NormalTok{ sd) }\OperatorTok{*}\StringTok{ }\NormalTok{n }\OperatorTok{*}\StringTok{ }\NormalTok{bw}
+\NormalTok{      \},}
+      \DataTypeTok{args =} \KeywordTok{c}\NormalTok{(}\DataTypeTok{mean =} \KeywordTok{mean}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{sd =} \KeywordTok{sd}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{n =} \KeywordTok{length}\NormalTok{(idL), }
+               \DataTypeTok{bw =}\NormalTok{ binwidth))}
+
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, p7, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/filter.lm.651-1.pdf}
+NULL
+
+\section{MZ=600.513493}\label{mz600.513493}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx<-}\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz}\OperatorTok{-}\FloatTok{600.513493}\NormalTok{)}\OperatorTok{<}\FloatTok{1e-3}\NormalTok{)}
+\NormalTok{  cP<-}\KeywordTok{which.max}\NormalTok{(p}\OperatorTok{$}\NormalTok{intensity[idx])}
+\NormalTok{  ionI<-idx[cP]}
+\NormalTok{  maxMZ<-p}\OperatorTok{$}\NormalTok{mz[ionI]}
+\end{Highlighting}
+\end{Shaded}
+
+The selected row represents the peak with m/z=600.5134 of the scan N=45
+taken at time 59.4 sec:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{print}\NormalTok{(}\KeywordTok{getScanPlot}\NormalTok{(p[scan}\OperatorTok{==}\NormalTok{p}\OperatorTok{$}\NormalTok{scan[ionI]]))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/ion.plots.600-1.pdf}
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z
+value and analyze how they drift with time:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx <-}\StringTok{ }\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{maxMZ) }\OperatorTok{<}\StringTok{ }\NormalTok{(ppm }\OperatorTok{*}\StringTok{ }\FloatTok{1e-6} \OperatorTok{*}\StringTok{ }\NormalTok{maxMZ))}
+\NormalTok{  p. <-}\StringTok{ }\NormalTok{p[idx, ]}
+\end{Highlighting}
+\end{Shaded}
+
+To separate feature from surrounding noise we cluster data in m/z domain
+by hierarchical Ward clustering and select the most stable clusters with
+dynamicTreeCut:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  dissim1 =}\StringTok{ }\KeywordTok{dist}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  dendro1 <-}\StringTok{ }\KeywordTok{hclust}\NormalTok{(}\DataTypeTok{d =}\NormalTok{ dissim1, }\DataTypeTok{method =} \StringTok{'ward.D2'}\NormalTok{)}
+\NormalTok{  ct1 <-}\StringTok{ }\KeywordTok{cutreeDynamic}\NormalTok{(}
+\NormalTok{    dendro1,}
+    \DataTypeTok{cutHeight =} \OtherTok{NULL}\NormalTok{,}
+    \DataTypeTok{minClusterSize =} \DecValTok{30}\NormalTok{,}
+    \DataTypeTok{method =} \StringTok{"hybrid"}\NormalTok{,}
+    \DataTypeTok{deepSplit =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{pamStage =} \OtherTok{TRUE}\NormalTok{,}
+    \DataTypeTok{distM =} \KeywordTok{as.matrix}\NormalTok{(dissim1),}
+    \DataTypeTok{maxPamDist =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{verbose =} \DecValTok{0}
+\NormalTok{  )}
+\NormalTok{  cct1 <-}\StringTok{ }\NormalTok{ct1[}\KeywordTok{which.max}\NormalTok{(p.}\OperatorTok{$}\NormalTok{intensity)]}
+\NormalTok{  id.}\DecValTok{1}\NormalTok{ <-}\StringTok{ }\NormalTok{idx[ct1 }\OperatorTok{==}\StringTok{ }\NormalTok{cct1]}
+\NormalTok{  mz1 <-}\StringTok{ }\KeywordTok{median}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz[id.}\DecValTok{1}\NormalTok{])}
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{color<-.pal[ct1}\OperatorTok{+}\DecValTok{1}\NormalTok{]}
+\NormalTok{  rl <-}\StringTok{ }\KeywordTok{get_runLen}\NormalTok{(p}\OperatorTok{$}\NormalTok{scan[id.}\DecValTok{1}\NormalTok{], scanLen)}
+\NormalTok{  p1<-}\KeywordTok{qplot}\NormalTok{(time,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{main=}\KeywordTok{paste0}\NormalTok{(}\StringTok{'mz'}\NormalTok{,maxMZ),}\DataTypeTok{log=}\StringTok{'y'}\NormalTok{,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p2<-}\KeywordTok{qplot}\NormalTok{(time,mz,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p3<-}\KeywordTok{qplot}\NormalTok{(mz,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p1, p2, p3, }\DataTypeTok{cols=}\DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/cluster.mz.600-1.pdf}
+NULL
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  l<-}\KeywordTok{lm}\NormalTok{(mz }\OperatorTok{~}\StringTok{ }\NormalTok{time, }\DataTypeTok{data =}\NormalTok{ p[id.}\DecValTok{1}\NormalTok{, ])}
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+\NormalTok{  op <-}\StringTok{ }\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow =} \KeywordTok{c}\NormalTok{(}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{), }\DataTypeTok{oma =} \KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{2}\NormalTok{, }\DecValTok{0}\NormalTok{))}
+  \KeywordTok{plot}\NormalTok{(l)}
+  \KeywordTok{par}\NormalTok{(op)}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/fit.lin.600-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+  \KeywordTok{range}\NormalTok{(l}\OperatorTok{$}\NormalTok{residuals[}\KeywordTok{abs}\NormalTok{(}\KeywordTok{rstandard}\NormalTok{(l)) }\OperatorTok{<=}\StringTok{ }\DecValTok{2}\NormalTok{]) ->}\StringTok{ }\NormalTok{bnd}
+\NormalTok{  pl <-}\StringTok{ }\KeywordTok{predict}\NormalTok{(l, p.)}
+\NormalTok{  rl <-}\StringTok{ }\NormalTok{p.}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{pl}
+\NormalTok{  idL <-}\StringTok{ }\KeywordTok{which}\NormalTok{(rl }\OperatorTok{>=}\StringTok{ }\NormalTok{bnd[}\DecValTok{1}\NormalTok{] }\OperatorTok{&}\StringTok{ }\NormalTok{rl }\OperatorTok{<=}\StringTok{ }\NormalTok{bnd[}\DecValTok{2}\NormalTok{])}
+\NormalTok{  p5 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(}
+\NormalTok{          time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.[idL],}
+          \DataTypeTok{color =}\NormalTok{ color,}
+          \DataTypeTok{xlim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{time),}
+          \DataTypeTok{ylim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  )}
+\NormalTok{  p6 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.,}
+          \DataTypeTok{color =}\NormalTok{ color) }\OperatorTok{+}
+\StringTok{      }\KeywordTok{geom_abline}\NormalTok{(}\DataTypeTok{intercept =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{],}
+          \DataTypeTok{slope =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{2}\NormalTok{])}
+  
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{resPPM<-rl}\OperatorTok{*}\FloatTok{1e6}\OperatorTok{/}\NormalTok{l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{]}
+\NormalTok{  p7<-}\KeywordTok{qplot}\NormalTok{(resPPM,}\DataTypeTok{data=}\NormalTok{p.[idL],}
+            \DataTypeTok{binwidth=}\NormalTok{binwidth,}\DataTypeTok{color=}\NormalTok{color)}\OperatorTok{+}
+\StringTok{    }\KeywordTok{stat_function}\NormalTok{(}\DataTypeTok{fun =} \ControlFlowTok{function}\NormalTok{(x, mean, sd, n, bw)\{}
+      \KeywordTok{dnorm}\NormalTok{(}\DataTypeTok{x =}\NormalTok{ x, }\DataTypeTok{mean =}\NormalTok{ mean, }\DataTypeTok{sd =}\NormalTok{ sd) }\OperatorTok{*}\StringTok{ }\NormalTok{n }\OperatorTok{*}\StringTok{ }\NormalTok{bw}
+\NormalTok{      \},}
+      \DataTypeTok{args =} \KeywordTok{c}\NormalTok{(}\DataTypeTok{mean =} \KeywordTok{mean}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{sd =} \KeywordTok{sd}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{n =} \KeywordTok{length}\NormalTok{(idL), }
+               \DataTypeTok{bw =}\NormalTok{ binwidth))}
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, p7, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/filter.lm.600-1.pdf}
+NULL
+
+\section{MZ=602.510830}\label{mz602.510830}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx<-}\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz}\OperatorTok{-}\FloatTok{602.510830}\NormalTok{)}\OperatorTok{<}\FloatTok{1e-3}\NormalTok{)}
+\NormalTok{  cP<-}\KeywordTok{which.max}\NormalTok{(p}\OperatorTok{$}\NormalTok{intensity[idx])}
+\NormalTok{  ionI<-idx[cP]}
+\NormalTok{  maxMZ<-p}\OperatorTok{$}\NormalTok{mz[ionI]}
+\end{Highlighting}
+\end{Shaded}
+
+The selected row represents the peak with m/z=602.511 of the scan N=45
+taken at time 59.4 sec:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{print}\NormalTok{(}\KeywordTok{getScanPlot}\NormalTok{(p[scan}\OperatorTok{==}\NormalTok{p}\OperatorTok{$}\NormalTok{scan[ionI]]))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/ion.plots.602-1.pdf}
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z
+value and analyze how they drift with time:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx <-}\StringTok{ }\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{maxMZ) }\OperatorTok{<}\StringTok{ }\NormalTok{(ppm }\OperatorTok{*}\StringTok{ }\FloatTok{1e-6} \OperatorTok{*}\StringTok{ }\NormalTok{maxMZ))}
+\NormalTok{  p. <-}\StringTok{ }\NormalTok{p[idx, ]}
+\end{Highlighting}
+\end{Shaded}
+
+To separate feature from surrounding noise we cluster data in m/z domain
+by hierarchical Ward clustering and select the most stable clusters with
+dynamicTreeCut:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  dissim1 =}\StringTok{ }\KeywordTok{dist}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  dendro1 <-}\StringTok{ }\KeywordTok{hclust}\NormalTok{(}\DataTypeTok{d =}\NormalTok{ dissim1, }\DataTypeTok{method =} \StringTok{'ward.D2'}\NormalTok{)}
+\NormalTok{  ct1 <-}\StringTok{ }\KeywordTok{cutreeDynamic}\NormalTok{(}
+\NormalTok{    dendro1,}
+    \DataTypeTok{cutHeight =} \OtherTok{NULL}\NormalTok{,}
+    \DataTypeTok{minClusterSize =} \DecValTok{30}\NormalTok{,}
+    \DataTypeTok{method =} \StringTok{"hybrid"}\NormalTok{,}
+    \DataTypeTok{deepSplit =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{pamStage =} \OtherTok{TRUE}\NormalTok{,}
+    \DataTypeTok{distM =} \KeywordTok{as.matrix}\NormalTok{(dissim1),}
+    \DataTypeTok{maxPamDist =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{verbose =} \DecValTok{0}
+\NormalTok{  )}
+\NormalTok{  cct1 <-}\StringTok{ }\NormalTok{ct1[}\KeywordTok{which.max}\NormalTok{(p.}\OperatorTok{$}\NormalTok{intensity)]}
+\NormalTok{  id.}\DecValTok{1}\NormalTok{ <-}\StringTok{ }\NormalTok{idx[ct1 }\OperatorTok{==}\StringTok{ }\NormalTok{cct1]}
+\NormalTok{  mz1 <-}\StringTok{ }\KeywordTok{median}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz[id.}\DecValTok{1}\NormalTok{])}
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{color<-.pal[ct1}\OperatorTok{+}\DecValTok{1}\NormalTok{]}
+\NormalTok{  rl <-}\StringTok{ }\KeywordTok{get_runLen}\NormalTok{(p}\OperatorTok{$}\NormalTok{scan[id.}\DecValTok{1}\NormalTok{], scanLen)}
+\NormalTok{  p1<-}\KeywordTok{qplot}\NormalTok{(time,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{main=}\KeywordTok{paste0}\NormalTok{(}\StringTok{'mz'}\NormalTok{,maxMZ),}\DataTypeTok{log=}\StringTok{'y'}\NormalTok{,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p2<-}\KeywordTok{qplot}\NormalTok{(time,mz,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p3<-}\KeywordTok{qplot}\NormalTok{(mz,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p1, p2, p3, }\DataTypeTok{cols=}\DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/cluster.mz.602-1.pdf}
+NULL
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  l<-}\KeywordTok{lm}\NormalTok{(mz }\OperatorTok{~}\StringTok{ }\NormalTok{time, }\DataTypeTok{data =}\NormalTok{ p[id.}\DecValTok{1}\NormalTok{, ])}
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+\NormalTok{  op <-}\StringTok{ }\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow =} \KeywordTok{c}\NormalTok{(}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{), }\DataTypeTok{oma =} \KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{2}\NormalTok{, }\DecValTok{0}\NormalTok{))}
+  \KeywordTok{plot}\NormalTok{(l)}
+  \KeywordTok{par}\NormalTok{(op)}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/fit.lin.602-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+  \KeywordTok{range}\NormalTok{(l}\OperatorTok{$}\NormalTok{residuals[}\KeywordTok{abs}\NormalTok{(}\KeywordTok{rstandard}\NormalTok{(l)) }\OperatorTok{<=}\StringTok{ }\DecValTok{2}\NormalTok{]) ->}\StringTok{ }\NormalTok{bnd}
+\NormalTok{  pl <-}\StringTok{ }\KeywordTok{predict}\NormalTok{(l, p.)}
+\NormalTok{  rl <-}\StringTok{ }\NormalTok{p.}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{pl}
+\NormalTok{  idL <-}\StringTok{ }\KeywordTok{which}\NormalTok{(rl }\OperatorTok{>=}\StringTok{ }\NormalTok{bnd[}\DecValTok{1}\NormalTok{] }\OperatorTok{&}\StringTok{ }\NormalTok{rl }\OperatorTok{<=}\StringTok{ }\NormalTok{bnd[}\DecValTok{2}\NormalTok{])}
+\NormalTok{  p5 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(}
+\NormalTok{          time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.[idL],}
+          \DataTypeTok{color =}\NormalTok{ color,}
+          \DataTypeTok{xlim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{time),}
+          \DataTypeTok{ylim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  )}
+\NormalTok{  p6 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.,}
+          \DataTypeTok{color =}\NormalTok{ color) }\OperatorTok{+}
+\StringTok{      }\KeywordTok{geom_abline}\NormalTok{(}\DataTypeTok{intercept =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{],}
+          \DataTypeTok{slope =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{2}\NormalTok{])}
+  
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{resPPM<-rl}\OperatorTok{*}\FloatTok{1e6}\OperatorTok{/}\NormalTok{l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{]}
+\NormalTok{  p7<-}\KeywordTok{qplot}\NormalTok{(resPPM,}\DataTypeTok{data=}\NormalTok{p.[idL],}
+            \DataTypeTok{binwidth=}\NormalTok{binwidth,}\DataTypeTok{color=}\NormalTok{color)}\OperatorTok{+}
+\StringTok{    }\KeywordTok{stat_function}\NormalTok{(}\DataTypeTok{fun =} \ControlFlowTok{function}\NormalTok{(x, mean, sd, n, bw)\{}
+      \KeywordTok{dnorm}\NormalTok{(}\DataTypeTok{x =}\NormalTok{ x, }\DataTypeTok{mean =}\NormalTok{ mean, }\DataTypeTok{sd =}\NormalTok{ sd) }\OperatorTok{*}\StringTok{ }\NormalTok{n }\OperatorTok{*}\StringTok{ }\NormalTok{bw}
+\NormalTok{      \},}
+      \DataTypeTok{args =} \KeywordTok{c}\NormalTok{(}\DataTypeTok{mean =} \KeywordTok{mean}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{sd =} \KeywordTok{sd}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{n =} \KeywordTok{length}\NormalTok{(idL), }
+               \DataTypeTok{bw =}\NormalTok{ binwidth))}
+
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, p7, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/filter.lm.602-1.pdf}
+NULL
+
+\section{MZ=174.051}\label{mz174.051}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx<-}\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz}\OperatorTok{-}\FloatTok{174.051}\NormalTok{)}\OperatorTok{<}\FloatTok{5e-3}\NormalTok{)}
+\NormalTok{  cP<-}\KeywordTok{which.max}\NormalTok{(p}\OperatorTok{$}\NormalTok{intensity[idx])}
+\NormalTok{  ionI<-idx[cP]}
+\NormalTok{  maxMZ<-p}\OperatorTok{$}\NormalTok{mz[ionI]}
+\end{Highlighting}
+\end{Shaded}
+
+The selected row represents the peak with m/z=174.0472 of the scan N=246
+taken at time 407.9 sec:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{print}\NormalTok{(}\KeywordTok{getScanPlot}\NormalTok{(p[scan}\OperatorTok{==}\NormalTok{p}\OperatorTok{$}\NormalTok{scan[ionI]]))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/ion.plots.174-1.pdf}
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z
+value and analyze how they drift with time:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  idx <-}\StringTok{ }\KeywordTok{which}\NormalTok{(}\KeywordTok{abs}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{maxMZ) }\OperatorTok{<}\StringTok{ }\NormalTok{(ppm }\OperatorTok{*}\StringTok{ }\FloatTok{1e-6} \OperatorTok{*}\StringTok{ }\NormalTok{maxMZ))}
+\NormalTok{  p. <-}\StringTok{ }\NormalTok{p[idx, ]}
+\end{Highlighting}
+\end{Shaded}
+
+To separate feature from surrounding noise we cluster data in m/z domain
+by hierarchical Ward clustering and select the most stable clusters with
+dynamicTreeCut:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  dissim1 =}\StringTok{ }\KeywordTok{dist}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  dendro1 <-}\StringTok{ }\KeywordTok{hclust}\NormalTok{(}\DataTypeTok{d =}\NormalTok{ dissim1, }\DataTypeTok{method =} \StringTok{'ward.D2'}\NormalTok{)}
+\NormalTok{  ct1 <-}\StringTok{ }\KeywordTok{cutreeDynamic}\NormalTok{(}
+\NormalTok{    dendro1,}
+    \DataTypeTok{cutHeight =} \OtherTok{NULL}\NormalTok{,}
+    \DataTypeTok{minClusterSize =} \DecValTok{30}\NormalTok{,}
+    \DataTypeTok{method =} \StringTok{"hybrid"}\NormalTok{,}
+    \DataTypeTok{deepSplit =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{pamStage =} \OtherTok{TRUE}\NormalTok{,}
+    \DataTypeTok{distM =} \KeywordTok{as.matrix}\NormalTok{(dissim1),}
+    \DataTypeTok{maxPamDist =} \DecValTok{0}\NormalTok{,}
+    \DataTypeTok{verbose =} \DecValTok{0}
+\NormalTok{  )}
+\NormalTok{  cct1 <-}\StringTok{ }\NormalTok{ct1[}\KeywordTok{which.max}\NormalTok{(p.}\OperatorTok{$}\NormalTok{intensity)]}
+\NormalTok{  id.}\DecValTok{1}\NormalTok{ <-}\StringTok{ }\NormalTok{idx[ct1 }\OperatorTok{==}\StringTok{ }\NormalTok{cct1]}
+\NormalTok{  mz1 <-}\StringTok{ }\KeywordTok{median}\NormalTok{(p}\OperatorTok{$}\NormalTok{mz[id.}\DecValTok{1}\NormalTok{])}
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{color<-.pal[ct1}\OperatorTok{+}\DecValTok{1}\NormalTok{]}
+\NormalTok{  rl <-}\StringTok{ }\KeywordTok{get_runLen}\NormalTok{(p}\OperatorTok{$}\NormalTok{scan[id.}\DecValTok{1}\NormalTok{], scanLen)}
+\NormalTok{  p1<-}\KeywordTok{qplot}\NormalTok{(time,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{main=}\KeywordTok{paste0}\NormalTok{(}\StringTok{'mz'}\NormalTok{,maxMZ),}\DataTypeTok{log=}\StringTok{'y'}\NormalTok{,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p2<-}\KeywordTok{qplot}\NormalTok{(time,mz,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+\NormalTok{  p3<-}\KeywordTok{qplot}\NormalTok{(mz,intensity,}\DataTypeTok{data =}\NormalTok{ p.,}\DataTypeTok{color=}\NormalTok{color)}
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p1, p2, p3, }\DataTypeTok{cols=}\DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/cluster.mz.174-1.pdf}
+NULL
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{  l<-}\KeywordTok{lm}\NormalTok{(mz }\OperatorTok{~}\StringTok{ }\NormalTok{time, }\DataTypeTok{data =}\NormalTok{ p[id.}\DecValTok{1}\NormalTok{, ])}
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+\NormalTok{  op <-}\StringTok{ }\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow =} \KeywordTok{c}\NormalTok{(}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{), }\DataTypeTok{oma =} \KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{0}\NormalTok{, }\DecValTok{2}\NormalTok{, }\DecValTok{0}\NormalTok{))}
+  \KeywordTok{plot}\NormalTok{(l)}
+  \KeywordTok{par}\NormalTok{(op)}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/fit.lin.174-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{if}\NormalTok{ (}\KeywordTok{all}\NormalTok{(}\OperatorTok{!}\KeywordTok{is.na}\NormalTok{(l}\OperatorTok{$}\NormalTok{coefficients))) \{}
+  \KeywordTok{range}\NormalTok{(l}\OperatorTok{$}\NormalTok{residuals[}\KeywordTok{abs}\NormalTok{(}\KeywordTok{rstandard}\NormalTok{(l)) }\OperatorTok{<=}\StringTok{ }\DecValTok{2}\NormalTok{]) ->}\StringTok{ }\NormalTok{bnd}
+\NormalTok{  pl <-}\StringTok{ }\KeywordTok{predict}\NormalTok{(l, p.)}
+\NormalTok{  rl <-}\StringTok{ }\NormalTok{p.}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{pl}
+\NormalTok{  idL <-}\StringTok{ }\KeywordTok{which}\NormalTok{(rl }\OperatorTok{>=}\StringTok{ }\NormalTok{bnd[}\DecValTok{1}\NormalTok{] }\OperatorTok{&}\StringTok{ }\NormalTok{rl }\OperatorTok{<=}\StringTok{ }\NormalTok{bnd[}\DecValTok{2}\NormalTok{])}
+\NormalTok{  p5 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(}
+\NormalTok{          time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.[idL],}
+          \DataTypeTok{color =}\NormalTok{ color,}
+          \DataTypeTok{xlim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{time),}
+          \DataTypeTok{ylim =} \KeywordTok{range}\NormalTok{(p.}\OperatorTok{$}\NormalTok{mz)}
+\NormalTok{  )}
+\NormalTok{  p6 =}\StringTok{ }\KeywordTok{qplot}\NormalTok{(time,}
+\NormalTok{          mz,}
+          \DataTypeTok{data =}\NormalTok{ p.,}
+          \DataTypeTok{color =}\NormalTok{ color) }\OperatorTok{+}
+\StringTok{      }\KeywordTok{geom_abline}\NormalTok{(}\DataTypeTok{intercept =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{],}
+          \DataTypeTok{slope =}\NormalTok{ l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{2}\NormalTok{])}
+  
+  
+\NormalTok{  p.}\OperatorTok{$}\NormalTok{resPPM<-rl}\OperatorTok{*}\FloatTok{1e6}\OperatorTok{/}\NormalTok{l}\OperatorTok{$}\NormalTok{coefficients[}\DecValTok{1}\NormalTok{]}
+\NormalTok{  p7<-}\KeywordTok{qplot}\NormalTok{(resPPM,}\DataTypeTok{data=}\NormalTok{p.[idL],}
+            \DataTypeTok{binwidth=}\NormalTok{binwidth,}\DataTypeTok{color=}\NormalTok{color)}\OperatorTok{+}
+\StringTok{    }\KeywordTok{stat_function}\NormalTok{(}\DataTypeTok{fun =} \ControlFlowTok{function}\NormalTok{(x, mean, sd, n, bw)\{}
+      \KeywordTok{dnorm}\NormalTok{(}\DataTypeTok{x =}\NormalTok{ x, }\DataTypeTok{mean =}\NormalTok{ mean, }\DataTypeTok{sd =}\NormalTok{ sd) }\OperatorTok{*}\StringTok{ }\NormalTok{n }\OperatorTok{*}\StringTok{ }\NormalTok{bw}
+\NormalTok{      \},}
+      \DataTypeTok{args =} \KeywordTok{c}\NormalTok{(}\DataTypeTok{mean =} \KeywordTok{mean}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{sd =} \KeywordTok{sd}\NormalTok{(p.}\OperatorTok{$}\NormalTok{resPPM[idL]), }
+               \DataTypeTok{n =} \KeywordTok{length}\NormalTok{(idL), }
+               \DataTypeTok{bw =}\NormalTok{ binwidth))}
+
+  \KeywordTok{print}\NormalTok{(}\KeywordTok{multiplot}\NormalTok{(p5, p6, p7, }\DataTypeTok{cols =} \DecValTok{1}\NormalTok{))}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Supplementary_document_files/figure-latex/filter.lm.174-1.pdf}
+NULL
 
 \section{Appendix}\label{appendix}
 
@@ -435,6 +927,14 @@ ions should be analysed separately.
 \NormalTok{  r<-}\KeywordTok{get_Rle}\NormalTok{(.scan,.max)}
   \KeywordTok{return}\NormalTok{(}\KeywordTok{runLength}\NormalTok{(r)[}\KeywordTok{which}\NormalTok{(}\KeywordTok{runValue}\NormalTok{(r)}\OperatorTok{==}\DecValTok{1}\NormalTok{)])}
 \NormalTok{\}}
+
+\NormalTok{getFeature<-}\ControlFlowTok{function}\NormalTok{(l,p.,}\DataTypeTok{th=}\FloatTok{2.0}\NormalTok{)\{}
+  \KeywordTok{range}\NormalTok{(l}\OperatorTok{$}\NormalTok{residuals[}\KeywordTok{abs}\NormalTok{(}\KeywordTok{rstandard}\NormalTok{(l)) }\OperatorTok{<=}\StringTok{ }\DecValTok{2}\NormalTok{]) ->}\StringTok{ }\NormalTok{bnd}
+\NormalTok{  pl <-}\StringTok{ }\KeywordTok{predict}\NormalTok{(l, p.)}
+\NormalTok{  rl <-}\StringTok{ }\NormalTok{p.}\OperatorTok{$}\NormalTok{mz }\OperatorTok{-}\StringTok{ }\NormalTok{pl}
+\NormalTok{  idL <-}\StringTok{ }\KeywordTok{which}\NormalTok{(rl }\OperatorTok{>=}\StringTok{ }\NormalTok{bnd[}\DecValTok{1}\NormalTok{] }\OperatorTok{&}\StringTok{ }\NormalTok{rl }\OperatorTok{<=}\StringTok{ }\NormalTok{bnd[}\DecValTok{2}\NormalTok{])}
+  \KeywordTok{return}\NormalTok{(idL)}
+\NormalTok{\}}
 \end{Highlighting}
 \end{Shaded}
 
@@ -442,7 +942,7 @@ ions should be analysed separately.
 
 \subsubsection{Document version}\label{document-version}
 
-b280dba555-dirty 16.06.2017
+e807239b6e-dirty 20.06.2017
 
 \subsubsection{Session Info}\label{session-info}
 

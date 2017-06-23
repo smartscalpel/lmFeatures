@@ -36,6 +36,7 @@ library(xcms)
 library(RColorBrewer)
 library(ggrepel)
 library(IRanges)
+library(MASS)
 ```
 
 ```{r setup, include=FALSE, cache=FALSE}
@@ -285,11 +286,20 @@ separated line on the time vs m/z plot. So we can extract distinct features by
 fitting data from cluster containing peak of highest intensity to the linear 
 function:
 
-```{r fit.lin}
+```{r fit.lin,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
   l<-lm(mz ~ time, data = p[id.1, ])
 if (all(!is.na(l$coefficients))) {
   op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
   plot(l)
+  par(op)
+}
+```
+
+```{r fit.lin.huber,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  l.huber<-rlm(mz ~ time, data = p[id.1, ])
+if (all(!is.na(l.huber$coefficients))) {
+  op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+  plot(l.huber)
   par(op)
 }
 ```
@@ -345,6 +355,210 @@ remove from the list all features which is too short to produse reliable
 regression. Only features wich contains more than 300 points in of more than 
 100 consequtive scans will be preserved. High intensity bursting ions should be
 analysed separately.
+
+# MZ=845.6437
+```{r get.mz.845}
+  idx<-which(abs(p$mz-845.6437)<1e-3)
+  cP<-which.max(p$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-p$mz[ionI]
+```
+
+The selected row represents the peak with m/z=`r round(maxMZ,4)` of the scan 
+N=`r p$scan[ionI]` taken at time `r round(p$time[ionI],1)` sec: 
+
+```{r ion.plots.845,fig.width=8.5,fig.height=4.5,results='asis',cache=FALSE}
+print(getScanPlot(p[scan==p$scan[ionI]]))
+```
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z value and analyze
+how they drift with time:
+
+```{r get.subset.845}
+  idx <- which(abs(p$mz - maxMZ) < (ppm * 1e-6 * maxMZ))
+  p. <- p[idx, ]
+```
+
+To separate feature from surrounding noise we cluster data in m/z domain by 
+hierarchical Ward clustering and select the most stable clusters with 
+dynamicTreeCut:
+
+```{r cluster.mz.845,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  dissim1 = dist(p.$mz)
+  dendro1 <- hclust(d = dissim1, method = 'ward.D2')
+  ct1 <- cutreeDynamic(
+    dendro1,
+    cutHeight = NULL,
+    minClusterSize = 30,
+    method = "hybrid",
+    deepSplit = 0,
+    pamStage = TRUE,
+    distM = as.matrix(dissim1),
+    maxPamDist = 0,
+    verbose = 0
+  )
+  cct1 <- ct1[which.max(p.$intensity)]
+  id.1 <- idx[ct1 == cct1]
+  mz1 <- median(p$mz[id.1])
+  p.$color<-.pal[ct1+1]
+  rl <- get_runLen(p$scan[id.1], scanLen)
+  p1<-qplot(time,intensity,data = p.,main=paste0('mz',maxMZ),log='y',color=color)
+  p2<-qplot(time,mz,data = p.,color=color)
+  p3<-qplot(mz,intensity,data = p.,color=color)
+  print(multiplot(p1, p2, p3, cols=1))
+  
+```
+
+
+```{r fit.lin.845,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  l<-lm(mz ~ time, data = p[id.1, ])
+if (all(!is.na(l$coefficients))) {
+  op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+  plot(l)
+  par(op)
+}
+```
+
+```{r filter.lm.845,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+if (all(!is.na(l$coefficients))) {
+  range(l$residuals[abs(rstandard(l)) <= 2]) -> bnd
+  pl <- predict(l, p.)
+  rl <- p.$mz - pl
+  idL <- which(rl >= bnd[1] & rl <= bnd[2])
+  p5 = qplot(
+          time,
+          mz,
+          data = p.[idL],
+          color = color,
+          xlim = range(p.$time),
+          ylim = range(p.$mz)
+  )
+  p6 = qplot(time,
+          mz,
+          data = p.,
+          color = color) +
+      geom_abline(intercept = l$coefficients[1],
+          slope = l$coefficients[2])
+  
+  p.$resPPM<-rl*1e6/l$coefficients[1]
+  p7<-qplot(resPPM,data=p.[idL],
+            binwidth=binwidth,color=color)+
+    stat_function(fun = function(x, mean, sd, n, bw){
+      dnorm(x = x, mean = mean, sd = sd) * n * bw
+      },
+      args = c(mean = mean(p.$resPPM[idL]), 
+               sd = sd(p.$resPPM[idL]), 
+               n = length(idL), 
+               bw = binwidth))
+  print(multiplot(p5, p6, p7, cols = 1))
+}
+```
+
+
+
+
+
+# MZ=846.6437
+```{r get.mz.846}
+  idx<-which(abs(p$mz-846.6437)<1e-2)
+  cP<-which.max(p$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-p$mz[ionI]
+```
+
+The selected row represents the peak with m/z=`r round(maxMZ,4)` of the scan 
+N=`r p$scan[ionI]` taken at time `r round(p$time[ionI],1)` sec: 
+
+```{r ion.plots.846,fig.width=8.5,fig.height=4.5,results='asis',cache=FALSE}
+print(getScanPlot(p[scan==p$scan[ionI]]))
+```
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z value and analyze
+how they drift with time:
+
+```{r get.subset.846}
+  idx <- which(abs(p$mz - maxMZ) < (ppm * 1e-6 * maxMZ))
+  p. <- p[idx, ]
+```
+
+To separate feature from surrounding noise we cluster data in m/z domain by 
+hierarchical Ward clustering and select the most stable clusters with 
+dynamicTreeCut:
+
+```{r cluster.mz.846,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  dissim1 = dist(p.$mz)
+  dendro1 <- hclust(d = dissim1, method = 'ward.D2')
+  ct1 <- cutreeDynamic(
+    dendro1,
+    cutHeight = NULL,
+    minClusterSize = 30,
+    method = "hybrid",
+    deepSplit = 0,
+    pamStage = TRUE,
+    distM = as.matrix(dissim1),
+    maxPamDist = 0,
+    verbose = 0
+  )
+  cct1 <- ct1[which.max(p.$intensity)]
+  id.1 <- idx[ct1 == cct1]
+  mz1 <- median(p$mz[id.1])
+  p.$color<-.pal[ct1+1]
+  rl <- get_runLen(p$scan[id.1], scanLen)
+  p1<-qplot(time,intensity,data = p.,main=paste0('mz',maxMZ),log='y',color=color)
+  p2<-qplot(time,mz,data = p.,color=color)
+  p3<-qplot(mz,intensity,data = p.,color=color)
+  print(multiplot(p1, p2, p3, cols=1))
+  
+```
+
+
+```{r fit.lin.846,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  l<-lm(mz ~ time, data = p[id.1, ])
+if (all(!is.na(l$coefficients))) {
+  op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+  plot(l)
+  par(op)
+}
+```
+
+```{r filter.lm.846,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+if (all(!is.na(l$coefficients))) {
+  range(l$residuals[abs(rstandard(l)) <= 2]) -> bnd
+  pl <- predict(l, p.)
+  rl <- p.$mz - pl
+  idL <- which(rl >= bnd[1] & rl <= bnd[2])
+  p5 = qplot(
+          time,
+          mz,
+          data = p.[idL],
+          color = color,
+          xlim = range(p.$time),
+          ylim = range(p.$mz)
+  )
+  p6 = qplot(time,
+          mz,
+          data = p.,
+          color = color) +
+      geom_abline(intercept = l$coefficients[1],
+          slope = l$coefficients[2])
+  
+  p.$resPPM<-rl*1e6/l$coefficients[1]
+  p7<-qplot(resPPM,data=p.[idL],
+            binwidth=binwidth,color=color)+
+    stat_function(fun = function(x, mean, sd, n, bw){
+      dnorm(x = x, mean = mean, sd = sd) * n * bw
+      },
+      args = c(mean = mean(p.$resPPM[idL]), 
+               sd = sd(p.$resPPM[idL]), 
+               n = length(idL), 
+               bw = binwidth))
+  print(multiplot(p5, p6, p7, cols = 1))
+}
+```
+
+
+
+
 
 # MZ=651.477226
 ```{r get.mz.651}
@@ -542,6 +756,106 @@ if (all(!is.na(l$coefficients))) {
   print(multiplot(p5, p6, p7, cols = 1))
 }
 ```
+
+
+# MZ=646.276916
+```{r get.mz.646}
+  idx<-which(abs(p$mz-646.276916)<1e-3)
+  cP<-which.max(p$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-p$mz[ionI]
+```
+
+The selected row represents the peak with m/z=`r round(maxMZ,4)` of the scan 
+N=`r p$scan[ionI]` taken at time `r round(p$time[ionI],1)` sec: 
+
+```{r ion.plots.646,fig.width=8.5,fig.height=4.5,results='asis',cache=FALSE}
+print(getScanPlot(p[scan==p$scan[ionI]]))
+```
+
+Now we collect all signals in the vicinity (50 ppm) of the selected m/z value and analyze
+how they drift with time:
+
+```{r get.subset.646}
+  idx <- which(abs(p$mz - maxMZ) < (ppm * 1e-6 * maxMZ))
+  p. <- p[idx, ]
+```
+
+To separate feature from surrounding noise we cluster data in m/z domain by 
+hierarchical Ward clustering and select the most stable clusters with 
+dynamicTreeCut:
+
+```{r cluster.mz.646,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  dissim1 = dist(p.$mz)
+  dendro1 <- hclust(d = dissim1, method = 'ward.D2')
+  ct1 <- cutreeDynamic(
+    dendro1,
+    cutHeight = NULL,
+    minClusterSize = 30,
+    method = "hybrid",
+    deepSplit = 0,
+    pamStage = TRUE,
+    distM = as.matrix(dissim1),
+    maxPamDist = 0,
+    verbose = 0
+  )
+  cct1 <- ct1[which.max(p.$intensity)]
+  id.1 <- idx[ct1 == cct1]
+  mz1 <- median(p$mz[id.1])
+  p.$color<-.pal[ct1+1]
+  rl <- get_runLen(p$scan[id.1], scanLen)
+  p1<-qplot(time,intensity,data = p.,main=paste0('mz',maxMZ),log='y',color=color)
+  p2<-qplot(time,mz,data = p.,color=color)
+  p3<-qplot(mz,intensity,data = p.,color=color)
+  print(multiplot(p1, p2, p3, cols=1))
+  
+```
+
+
+```{r fit.lin.646,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+  l<-lm(mz ~ time, data = p[id.1, ])
+if (all(!is.na(l$coefficients))) {
+  op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+  plot(l)
+  par(op)
+}
+```
+
+```{r filter.lm.646,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE}
+if (all(!is.na(l$coefficients))) {
+  range(l$residuals[abs(rstandard(l)) <= 2]) -> bnd
+  pl <- predict(l, p.)
+  rl <- p.$mz - pl
+  idL <- which(rl >= bnd[1] & rl <= bnd[2])
+  p5 = qplot(
+          time,
+          mz,
+          data = p.[idL],
+          color = color,
+          xlim = range(p.$time),
+          ylim = range(p.$mz)
+  )
+  p6 = qplot(time,
+          mz,
+          data = p.,
+          color = color) +
+      geom_abline(intercept = l$coefficients[1],
+          slope = l$coefficients[2])
+  
+  p.$resPPM<-rl*1e6/l$coefficients[1]
+  p7<-qplot(resPPM,data=p.[idL],
+            binwidth=binwidth,color=color)+
+    stat_function(fun = function(x, mean, sd, n, bw){
+      dnorm(x = x, mean = mean, sd = sd) * n * bw
+      },
+      args = c(mean = mean(p.$resPPM[idL]), 
+               sd = sd(p.$resPPM[idL]), 
+               n = length(idL), 
+               bw = binwidth))
+  print(multiplot(p5, p6, p7, cols = 1))
+}
+```
+
 
 # MZ=602.510830
 ```{r get.mz.602}

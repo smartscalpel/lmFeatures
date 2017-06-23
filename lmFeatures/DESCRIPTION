@@ -6,9 +6,10 @@ Date: 2017-04-15
 Author: Anatoly Sorokin 
 Maintainer: Anatoly Sorokin <lptolik@gmail.com>
 Description: More about what it does (maybe more than one line)
-Depends: R (>= 3.0), xcms, data.table
-Imports: stringr, reshape2, ggplot2, plyr, Matrix, ggrepel 
-Suggests:  knitr, FactoMineR, xtable, factoextra
+Depends: R (>= 3.0), xcms, data.table, dynamicTreeCut
+Imports: stringr, reshape2, ggplot2, plyr, Matrix, ggrepel, xtable, S4Vectors 
+Suggests: knitr, FactoMineR, factoextra
 VignetteBuilder: knitr
 License: GPL (>= 2)
 LazyLoad: yes
+RoxygenNote: 6.0.1

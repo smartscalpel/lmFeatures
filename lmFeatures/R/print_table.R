@@ -9,7 +9,6 @@
 #'
 #' @return none
 #' @export
-#'
 print_table <-
 function(mat,digits=-5){print_tableL(mat,digits)}
 
@@ -22,6 +21,7 @@ function(mat,digits=-5){print_tableL(mat,digits)}
 #'
 #' @return none
 #' @export
+#' @import xtable
 #'
 print_tableP<-function(mat,digits=-5){
   addtorow          <- list()
@@ -63,6 +63,7 @@ print_tableP<-function(mat,digits=-5){
 #'
 #' @return none
 #' @export
+#' @import xtable
 #'
 print_tableL<-function(mat,digits=-5){
   addtorow          <- list()

@@ -130,7 +130,7 @@ alignPeaksDTrle <- function(peaks,
     rl <- get_runLen(peaks$scan[id.1], scanLen)
     if (length(id.1) >= min(minAbsLen,minRelLen*scanLen) || max(rl) > minRunLen) {
       peaks$clIon1[id.1] <- mz1
-      peaks$ion[id.1] <- mz1
+#      peaks$ion[id.1] <- mz1
       lm(mz ~ time, data = peaks[id.1, ]) -> md
       if (any(abs(md$residuals) > thRes * sd(md$residuals))) {
         id.2 <- id.1[-which(abs(md$residuals) > thRes * sd(md$residuals))]
@@ -141,6 +141,7 @@ alignPeaksDTrle <- function(peaks,
       }
       peaks$lm[id.2] <- md1$coefficients[2]
       peaks$clIon2[id.2] <- md1$coefficients[1]
+      peaks$ion[id.2] <- md1$coefficients[1]
     } else{
       peaks$ion[ionI] <- -Inf
     }

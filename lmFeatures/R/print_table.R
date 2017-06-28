@@ -39,7 +39,7 @@ print_tableP<-function(mat,digits=-5){
   )
   cat(
     sprintf(
-      "\\begin{center}\n\\captionof{table}{Wide ranges of continious peaks (width>%d)}\n\\scriptsize",50
+      "\\begin{center}\n\\captionof{table}{Wide ranges of continious peaks (width \textgreater %d)}\n\\scriptsize",50
     )
   )
   print(
@@ -81,7 +81,7 @@ print_tableL<-function(mat,digits=-5){
   )
   cat(
     sprintf(
-      "\\newpage\n  \\begin{landscape} \n\\begin{center}\n\\captionof{table}{Wide ranges of continious peaks (width>%d))}\n\\scriptsize",50
+      "\\newpage\n  \\begin{landscape} \n\\begin{center}\n\\captionof{table}{Wide ranges of continious peaks (width \textgreater %d))}\n\\scriptsize",50
     )
   )
   print(

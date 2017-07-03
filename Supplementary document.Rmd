@@ -611,7 +611,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -733,7 +733,7 @@ if (all(!is.na(l$coefficients))) {
                n = length(idL), 
                bw = binwidth))
 
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -853,7 +853,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -976,7 +976,7 @@ if (all(!is.na(l$coefficients))) {
                n = length(idL), 
                bw = binwidth))
 
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -1058,7 +1058,7 @@ if (all(!is.na(l$coefficients))) {
 
 ```{r fit.lin.794,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE,echo=FALSE}
   l<-lm(mz ~ time, data = p[id.1, ])
-if (all(!is.na(l$coefficients))) {
+if (FALSE){#all(!is.na(l$coefficients))) {
   op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
   plot(l)
   par(op)
@@ -1096,7 +1096,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 ```{r get.quality.794,echo=FALSE,eval=FALSE}
@@ -1214,7 +1214,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -1335,11 +1335,130 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
 ```{r get.quality.646,echo=FALSE,eval=FALSE}
+  qualityTab<-data.frame(ion=maxMZ,
+                         medOutlier=NA,
+                         numClass=NA,
+                         numZero=NA,
+                         N=NA,
+                         ppmSD=NA,
+                         ppmRange=NA,
+                         ppmIQR=NA)
+  i<-1
+  ct2 <- hdbscan(scale(p.[,c('mz')]), minPts = min(.minPts,dim(p.)[1]/4))
+  p.$color<-.pal[ct2$cluster+1]
+  p.$sz<-ct2$membership_prob
+  p1<-qplot(time,intensity,data = p.,main=paste0('mz',maxMZ),color=color,alpha=sz,log='y')
+  p2<-qplot(time,mz,data = p.,color=color,alpha=sz)
+  p3<-qplot(mz,intensity,data = p.,color=color,alpha=sz)
+  p4<-qplot(mz,ion,data=p.,color=color,alpha=sz)
+  print(multiplot(p1, p2, p3,p4, cols=1))
+  qplot(mz,intensity,data = p.,facets =factor(ct2$cluster)~.,color=color,alpha=sz)
+  qualityTab$medOutlier[i]<-median(ct2$outlier_scores,na.rm = TRUE)
+  qualityTab$numClass[i]<-max(ct2$cluster)
+  qualityTab$numZero[i]<-length(which(ct2$cluster==0))
+  qualityTab$N[i]<-dim(p.)[1]
+  qualityTab$ppmSD[i]<-1e6*sd(p.$mz,na.rm = TRUE)/maxMZ
+  qualityTab$ppmRange[i]<-1e6*diff(range(p.$mz))/maxMZ
+  qualityTab$ppmIQR[i]<-1e6*IQR(p.$mz,na.rm = TRUE)/maxMZ
+  qualityTab$logOutlier<-log10(qualityTab$medOutlier)
+  qualityTab$Range2SD<-qualityTab$ppmRange/qualityTab$ppmSD
+  qualityTab$SD2IQR<-qualityTab$ppmSD/qualityTab$ppmIQR
+  predict(model2, newdata = (qualityTab[,-1]))->pred0
+  summary(pred0)
+  table(pred0)
+```
+
+
+## MZ=646.2973
+```{r get.mz.646.30,echo=FALSE}
+  idx<-which(abs(p$mz-646.296916)<1e-3)
+  cP<-which.max(p$intensity[idx])
+  ionI<-idx[cP]
+  maxMZ<-p$mz[ionI]
+```
+
+```{r get.subset.646.30,echo=FALSE}
+  idx <- which(abs(p$mz - maxMZ) < (ppm * 1e-6 * maxMZ))
+  p. <- p[idx, ]
+```
+
+```{r cluster.mz.646.30,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE,echo=FALSE}
+  dissim1 = dist(p.$mz)
+  dendro1 <- hclust(d = dissim1, method = 'ward.D2')
+  ct1 <- cutreeDynamic(
+    dendro1,
+    cutHeight = NULL,
+    minClusterSize = 30,
+    method = "hybrid",
+    deepSplit = 0,
+    pamStage = TRUE,
+    distM = as.matrix(dissim1),
+    maxPamDist = 0,
+    verbose = 0
+  )
+  cct1 <- ct1[which.min(abs(p.$mz - maxMZ))]
+  id.1 <- idx[ct1 == cct1]
+  mz1 <- median(p$mz[id.1])
+  p.$color<-.pal[ct1+1]
+  rl <- get_runLen(p$scan[id.1], scanLen)
+  p1<-qplot(time,intensity,data = p.,main=paste0('mz',maxMZ),log='y',color=color)
+  p2<-qplot(time,mz,data = p.,color=color)
+  p3<-qplot(mz,intensity,data = p.,color=color)
+  print(multiplot(p1, p2, p3, cols=1))
+  
+```
+
+
+```{r fit.lin.646.30,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE,echo=FALSE}
+  l<-lm(mz ~ time, data = p[id.1, ])
+if (FALSE){#all(!is.na(l$coefficients))) {
+  op <- par(mfrow = c(2, 2), oma = c(0, 0, 2, 0))
+  plot(l)
+  par(op)
+}
+```
+
+```{r filter.lm.646.30,fig.width=10.5,fig.height=10.5,results='asis',cache=FALSE,echo=FALSE}
+if (all(!is.na(l$coefficients))) {
+  range(l$residuals[abs(rstandard(l)) <= 2]) -> bnd
+  pl <- predict(l, p.)
+  rl <- p.$mz - pl
+  idL <- which(rl >= bnd[1] & rl <= bnd[2])
+  p5 = qplot(
+          time,
+          mz,
+          data = p.[idL],
+          color = color,
+          xlim = range(p.$time),
+          ylim = range(p.$mz)
+  )
+  p6 = qplot(time,
+          mz,
+          data = p.,
+          color = color) +
+      geom_abline(intercept = l$coefficients[1],
+          slope = l$coefficients[2])
+  
+  p.$resPPM<-rl*1e6/l$coefficients[1]
+  p7<-qplot(resPPM,data=p.[idL],
+            binwidth=binwidth,color=color)+
+    stat_function(fun = function(x, mean, sd, n, bw){
+      dnorm(x = x, mean = mean, sd = sd) * n * bw
+      },
+      args = c(mean = mean(p.$resPPM[idL]), 
+               sd = sd(p.$resPPM[idL]), 
+               n = length(idL), 
+               bw = binwidth))
+  print(multiplot(p6, p7, cols = 1))
+}
+```
+
+```{r get.quality.646.30,echo=FALSE,eval=TRUE}
   qualityTab<-data.frame(ion=maxMZ,
                          medOutlier=NA,
                          numClass=NA,
@@ -1456,7 +1575,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -1576,7 +1695,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -1694,7 +1813,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 
@@ -1813,7 +1932,7 @@ if (all(!is.na(l$coefficients))) {
                sd = sd(p.$resPPM[idL]), 
                n = length(idL), 
                bw = binwidth))
-  print(multiplot(p5, p6, p7, cols = 1))
+  print(multiplot(p6, p7, cols = 1))
 }
 ```
 

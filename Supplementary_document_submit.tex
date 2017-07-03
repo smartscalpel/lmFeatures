@@ -183,13 +183,23 @@ package and convert it into MZ table:
 As a result we have table with 5 columns: ``mz'', ``intensity'',
 ``ion'', ``time'', ``scan'' to store m/z, intensity, time of scan and
 its number. Column ``ion'' is reserved for ID of the feature, obtained
-with further analysis.
+with further analysis. We also load trained classifier for quality control.
 
-\section{Feature selection}\label{feature-selection}
+\section{Feature selection algorithm}\label{feature-selection}
 
 The algorithm process data in the MZ table in intensity descending
-order, so whenever it stops we can be sure that we identify most
-important features in the data.
+order, so whenever it stops we can be sure that we identify in the data features of the highest intensity.
+
+\begin{figure}[H]
+\begin{center}
+\includegraphics[totalheight=5in]{Supplementary_document_files/figure-latex/features.fig2.pdf}
+\caption{Outline of the feature selection algorithm.}
+\label{fig:alg}
+\end{center}
+\end{figure}
+
+
+\subsection{Locate the potential feature}
 
 At the first step algorithm selects row with highest intensity, which is
 not assigned to any feature yet, and take its m/z value as proposed
@@ -204,8 +214,8 @@ feature position:
 \end{Highlighting}
 \end{Shaded}
 
-The selected row represents the peak with m/z=844.6437 of the scan N=45
-taken at time 59.4 sec:
+In this case we have selected row with m/z=844.6437 at the scan N=45
+taken at time 59.4 sec (figure \ref{fig:scan.844}):
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -213,9 +223,16 @@ taken at time 59.4 sec:
 \end{Highlighting}
 \end{Shaded}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/ion.plots-1.pdf}
+\caption{Spectrum for scan N=45. Ten most intense peaks are labeled.}
+\label{fig:scan.844}
+\end{center}
+\end{figure}
 
-Now we collect all signals in the vicinity (50 ppm) of the selected m/z
+\subsection{Define feature vicinity}
+Now we collect all signals in the vicinity of the selected m/z
 value and analyze how they drift with time:
 
 \begin{Shaded}
@@ -225,9 +242,14 @@ value and analyze how they drift with time:
 \end{Highlighting}
 \end{Shaded}
 
+By default we set width of the surrounding region to the 50 ppm. Too wide range
+makes analysis time consuming as it contains too many signals that have to be clustered. 
+Too narrow region will contain small amount of signals and clustering algorithm would
+try to split one feature into several smaller ones.
+
 To separate feature from surrounding noise we cluster data in m/z domain
 by hierarchical Ward clustering and select the most stable clusters with
-dynamicTreeCut:
+dynamicTreeCut. Results of the clustering shown on the figure \ref{fig:cluster.844}.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -256,20 +278,31 @@ dynamicTreeCut:
 \end{Highlighting}
 \end{Shaded}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz-1.pdf}
+\caption{Feature vicinity for m/z=844.6437. All points are coloured by cluster. 
+Top -- the intensity vs time, middle -- m/z vs time and bottom -- intensity vs m/z. 
+The  blue points form a well separated cluster in all three panel. For us 
+most important is the middle panel, when blue cluster represents well separated strait line.}
+\label{fig:cluster.844}
+\end{center}
+\end{figure}
 
-\begin{verbatim}
-## NULL
-\end{verbatim}
+It could be seen (figure \ref{fig:cluster.844}) that selected m/z value forms a well separated cluster
+as in m/z as in intensity domain, but this is not always the case. As we
+looking for continuous features and rely on linear regression we will
+remove from the list all features which is too short to produce reliable
+regression. Only features which contains more than 300 points, among which  at least 100 
+points located in the consecutive scans, will be preserved. High intensity bursting
+ions are not considered here and should be analysed separately.
 
-It could be seen that selected m/z value forms a well separated cluster
-as in m/z as in intensity domain, but this is not always the case. There
-are peaks which could not be separated by such procedure, for example:
-
+\subsection{Linear regression}
 It could be seen that even in this case each feature visually represents
 well separated line on the time vs m/z plot. So we can extract distinct
 features by fitting data from cluster containing peak of highest
-intensity to the linear function:
+intensity to the linear function. Figure \ref{fig:lin.fit.844} show the quality 
+assessment  plots for the obtained regression.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -282,11 +315,22 @@ intensity to the linear function:
 \end{Highlighting}
 \end{Shaded}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/fit.lin-1.pdf}
+\caption{Fit quality assessment figure. 
+Top left: a plot of residuals against fitted values. There is no visual dependency between residuals and fitted value.
+Top right: a Normal Q-Q plot. In the range -2 to 2 residuals follow Gaussian distribution quite well.
+ Bottom left: Scale-Location plot. There are several outliers, but most standardized residual values are less than unity.
+ Bottom right: a plot of residuals against leverages.}
+\label{fig:lin.fit.844}
+\end{center}
+\end{figure}
+
 
 Now to incorporate to the feature all points, that form the line even if
-they appear in different cluster we predict linear value for each point
-in the selected interval and filter out all points with residuals higher
+they appear in different cluster we predict m/z value for each time point
+in the selected interval and keep only points with residuals less
 than two standard deviations:
 
 \begin{Shaded}
@@ -326,26 +370,30 @@ than two standard deviations:
 \NormalTok{\}}
 \end{Highlighting}
 \end{Shaded}
-
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm-1.pdf}
+\caption{Final feature selection procedure. Top: The points selected to be the part of feature.
+Middle: result of linear fit shown as a black line on the m/z vs time plot.
+Bottom: distribution of residuals for feature points. Residual values in ppm. Red line is normal distribution density. }
+\label{fig:lin.feature.844}
+\end{center}
+\end{figure}
 
-\begin{verbatim}
-## NULL
-\end{verbatim}
 
 The fitted line will change due to rearrangement of the feature point
-list, so we will repeat this step untill it converges or until range of
-residuals less than 1 ppm, but no more than 5 times.
+list, so we will repeat this step until convergence or until range of
+residuals less than 1 ppm, but no more than 15 times.
+
+\subsection{Quality control}
 
 Final step of the algorithm is the quality control. The feature could be
-too wide in m/z domain or it could eventually consists of several close
-crests, it could contains several points from the same scan. As we
-looking for continious features and rely on linear regression we will
-remove from the list all features which is too short to produse reliable
-regression. Only features wich contains more than 300 points in of more
-than 100 consequtive scans will be preserved. High intensity bursting
-ions should be analysed separately.
+too wide in m/z domain () or it could eventually consists of several close
+crests (), it could contains several points from the same scan. 
 
+To keep only reliable features we have trained the recursive partitioning tree classifier, which was loaded earlier. 
+To apply classifier we need to calculate number of feature properties, as a result we will get one of two type of outputs: 
+`g' for accepted features and `b' for rejected. 
 \begin{Shaded}
 \begin{Highlighting}[]
 \NormalTok{  qualityTab<-}\KeywordTok{data.frame}\NormalTok{(}\DataTypeTok{ion=}\NormalTok{maxMZ,}
@@ -380,137 +428,263 @@ ions should be analysed separately.
 ## 0 1
 \end{verbatim}
 
-The model has two type of output: `g' for accepted features and `b' for
-rejected. The result of our feature is `g', so it is accepted.
+The result of our feature is `g', so it is accepted. The following section shows examples of accepted (\ref{accepted-continious-features}) and rejected (\ref{rejected-continious-features}) featues. It should be noted that accepted features not always have residuals within 1ppm boundary, for example figure \ref{fig:chk.mz.602.5108} and \ref{fig:chk.mz.794.5708}. Feature m/z=794.5708 (figure \ref{fig:d3.mz.794.5708} and \ref{fig:chk.mz.794.5708}) is interesting as it could be split into two features visually, but numerically it is accepted as one feature. 
+
+Another interesting example is feature  m/z=890.6294  (figure \ref{fig:d3.mz.890.6294} and \ref{fig:chk.mz.890.6294}). There are three close features of similar intensity and chromatogram shape.
 
 \section{Accepted continious
 features}\label{accepted-continious-features}
 
 \subsection{MZ=845.6437}\label{mz845.6437}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.845-1.pdf}
-NULL
+\caption{Accepted feature m/z=845.6437. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.845.6437}
+\end{center}
+\end{figure}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.845-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=845.6437.}
+\label{ig:chk.mz.845.6437}
+\end{center}
+\end{figure}
+
+
 
 \subsection{MZ=846.6437}\label{mz846.6437}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.846-1.pdf}
-NULL
+\caption{Accepted feature m/z=846.6437. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.846.6437}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.846-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=846.6437.}
+\label{ig:chk.mz.846.6437}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=651.477226}\label{mz651.477226}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.651-1.pdf}
-NULL
+\caption{Accepted feature m/z=651.4772. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.651.4772}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.651-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=651.4772.}
+\label{ig:chk.mz.651.4772}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=600.513493}\label{mz600.513493}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.600-1.pdf}
-NULL
+\caption{Accepted feature m/z=600.5134. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.600.5134}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.600-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=600.5134.}
+\label{ig:chk.mz.600.5134}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=602.510830}\label{mz602.510830}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.602-1.pdf}
-NULL
+\caption{Accepted feature m/z=602.5108. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.602.5108}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.602-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=602.5108.}
+\label{ig:chk.mz.602.5108}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=794.5708}\label{mz794.5708}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.794-1.pdf}
-NULL
+\caption{Accepted feature m/z=794.5708. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.794.5708}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.794-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=794.5708.}
+\label{ig:chk.mz.794.5708}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=890.6294}\label{mz890.6294}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.890-1.pdf}
-NULL
+\caption{Accepted feature m/z=890.6294. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.890.6294}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.890-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=890.6294.}
+\label{ig:chk.mz.890.6294}
+\end{center}
+\end{figure}
+
 
 \section{Rejected continious
 features}\label{rejected-continious-features}
 
-\subsection{MZ=646.276916}\label{mz646.276916}
+\subsection{MZ=646.2973}\label{mz646.2973}
 
-\includegraphics{Supplementary_document_files/figure-latex/cluster.mz.646-1.pdf}
-NULL
-
-\includegraphics{Supplementary_document_files/figure-latex/filter.lm.646-1.pdf}
-NULL
-
-\subsection{MZ=646.306916}\label{mz646.306916}
-
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.646.30-1.pdf}
-NULL
+\caption{Rejected feature m/z=646.2973. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.646.2973}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.646.30-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=646.2973.}
+\label{ig:chk.mz.646.2973}
+\end{center}
+\end{figure}
 
-\includegraphics{Supplementary_document_files/figure-latex/get.quality.646.30-1.pdf}
-
-\begin{verbatim}
-## NULL
-\end{verbatim}
-
-\includegraphics{Supplementary_document_files/figure-latex/get.quality.646.30-2.pdf}
-
-\begin{verbatim}
-## b g 
-## 1 0
-\end{verbatim}
-
-\begin{verbatim}
-## pred0
-## b g 
-## 1 0
-\end{verbatim}
 
 \subsection{MZ=430.6063}\label{mz430.6063}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.430-1.pdf}
-NULL
+\caption{Rejected feature m/z=430.6063. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.430.6063}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.430-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=430.6063.}
+\label{ig:chk.mz.430.6063}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=1261.3767}\label{mz1261.3767}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.1261-1.pdf}
-NULL
+\caption{Rejected feature m/z=1261.3767. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.1261.3767}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.1261-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=1261.3767.}
+\label{ig:chk.mz.1261.3767}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=1110.5463}\label{mz1110.5463}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.1110-1.pdf}
-NULL
+\caption{Rejected feature m/z=1110.5463. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.1110.5463}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.1110-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=1110.5463.}
+\label{ig:chk.mz.1110.5463}
+\end{center}
+\end{figure}
+
 
 \subsection{MZ=222.631927}\label{mz222.631927}
 
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/cluster.mz.222-1.pdf}
-NULL
+\caption{Rejected feature m/z=222.6319. Three projections of intensity, time and m/z.}
+\label{fig:d3.mz.222.6319}
+\end{center}
+\end{figure}
 
+
+\begin{figure}[H]
+\begin{center}
 \includegraphics{Supplementary_document_files/figure-latex/filter.lm.222-1.pdf}
-NULL
+\caption{Linear fit (top) and distribution of residuals for the  feature m/z=222.6319.}
+\label{fig:chk.mz.222.6319}
+\end{center}
+\end{figure}
+
+\section{Identified normal brain features}
+\begin{figure}[H]
+\begin{center}
+\includegraphics{Supplementary_document_files/figure-latex/TissueTypeIdentification.pdf}
+\label{fig:ion.tab}
+\end{center}
+\end{figure}
+
 
 \section{Appendix}\label{appendix}
 
@@ -659,7 +833,7 @@ NULL
 
 \subsubsection{Document version}\label{document-version}
 
-36d71fe2b1-dirty 29.06.2017
+35867022a3-dirty 29.06.2017
 
 \subsubsection{Session Info}\label{session-info}
 
